@@ -1,0 +1,320 @@
+from __future__ import annotations
+
+import json
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal, ROUND_HALF_UP
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import Settings
+from app.db.models import (
+    ApprovalStatus,
+    MotivationSource,
+    PayrollItem,
+    Shift,
+    User,
+)
+from app.db.repositories import (
+    AssignmentRepo,
+    ManualAdjustmentRepo,
+    MotivationRepo,
+    PayrollRepo,
+    PointRepo,
+    ShiftRepo,
+    UserRepo,
+)
+from app.utils.dates import month_bounds
+from app.utils.parsing import normalize_text
+
+ZERO = Decimal("0")
+
+
+@dataclass
+class EmployeePayrollBreakdown:
+    user: User
+    shifts_count: int
+    hours_total: Decimal
+    base_amount_rub: Decimal
+    motivation_amount_rub: Decimal
+    issued_bonus_rub: Decimal
+    dispute_deduction_rub: Decimal
+    manager_bonus_rub: Decimal
+    adjustments_rub: Decimal
+    total_amount_rub: Decimal
+    issued_items_total: Decimal
+    details: dict
+
+
+class PayrollService:
+    def __init__(self, session: AsyncSession, settings: Settings):
+        self.session = session
+        self.settings = settings
+
+        self.user_repo = UserRepo(session)
+        self.point_repo = PointRepo(session)
+        self.assignment_repo = AssignmentRepo(session)
+        self.shift_repo = ShiftRepo(session)
+        self.motivation_repo = MotivationRepo(session)
+        self.adjustment_repo = ManualAdjustmentRepo(session)
+        self.payroll_repo = PayrollRepo(session)
+
+    async def run_payroll(
+        self,
+        period_start: date,
+        period_end: date,
+        payout_day: int,
+        generated_by: int | None,
+    ) -> tuple[int, list[EmployeePayrollBreakdown]]:
+        users = await self.user_repo.list_active_employees()
+        users_map = {u.id: u for u in users}
+
+        points = await self.point_repo.list_all()
+        points_map = {p.id: p for p in points}
+
+        assignments = await self.assignment_repo.list_all_active()
+        assignment_map = {(a.user_id, a.point_id): a for a in assignments}
+
+        shifts = await self.shift_repo.list_closed_between(period_start, period_end)
+        valid_shifts = [s for s in shifts if self._is_shift_payable(s)]
+
+        main_records = await self.motivation_repo.list_between_source(MotivationSource.MAIN, period_start, period_end)
+        dispute_records = await self.motivation_repo.list_between_source(MotivationSource.DISPUTE, period_start, period_end)
+        adjustments = await self.adjustment_repo.list_for_period(period_start, period_end)
+
+        shift_hours_by_user = defaultdict(lambda: ZERO)
+        shifts_count_by_user = defaultdict(int)
+        base_by_user = defaultdict(lambda: ZERO)
+
+        shifts_by_day_point: dict[tuple[date, int], list[Shift]] = defaultdict(list)
+        for shift in valid_shifts:
+            shifts_by_day_point[(shift.shift_date, shift.point_id)].append(shift)
+
+            hours = self._shift_hours(shift)
+            shift_hours_by_user[shift.user_id] += hours
+            shifts_count_by_user[shift.user_id] += 1
+
+            assignment = assignment_map.get((shift.user_id, shift.point_id))
+            point = points_map.get(shift.point_id)
+            base_by_user[shift.user_id] += self._calc_shift_base(shift, assignment, point)
+
+        user_id_by_last_name = {}
+        for user in users:
+            if user.last_name:
+                user_id_by_last_name[normalize_text(user.last_name)] = user.id
+
+        motivation_by_user = defaultdict(lambda: ZERO)
+        issued_count_by_user = defaultdict(lambda: ZERO)
+        tickets_by_user = defaultdict(lambda: ZERO)
+
+        for rec in main_records:
+            self._distribute_main_record(
+                record=rec,
+                shifts_by_day_point=shifts_by_day_point,
+                user_id_by_last_name=user_id_by_last_name,
+                motivation_by_user=motivation_by_user,
+                issued_count_by_user=issued_count_by_user,
+                tickets_by_user=tickets_by_user,
+            )
+
+        dispute_by_user = defaultdict(lambda: ZERO)
+        for rec in dispute_records:
+            status = normalize_text(rec.status or "")
+            if "не оспор" not in status:
+                continue
+            user_id = rec.user_id or self._match_user_id_from_name(rec.manager_name, user_id_by_last_name)
+            if not user_id:
+                continue
+            dispute_by_user[user_id] += Decimal(rec.disputed_amount_rub or 0)
+
+        adjustments_by_user = defaultdict(lambda: ZERO)
+        for adj in adjustments:
+            amount = Decimal(adj.amount_rub)
+            if adj.adjustment_type.value == "deduction":
+                amount = -abs(amount)
+            elif adj.adjustment_type.value == "bonus":
+                amount = abs(amount)
+            adjustments_by_user[adj.user_id] += amount
+
+        manager_bonus_by_user = defaultdict(lambda: ZERO)
+        if payout_day == 10:
+            manager_bonus_by_user = await self._calc_manager_bonus_for_tenth(period_end, users_map, user_id_by_last_name)
+
+        issued_bonus_by_user = defaultdict(lambda: ZERO)
+        for user_id, issued_count in issued_count_by_user.items():
+            full_steps = int(issued_count // Decimal(self.settings.wb_issue_bonus_step))
+            issued_bonus_by_user[user_id] = Decimal(full_steps * self.settings.wb_issue_bonus_amount)
+
+        run = await self.payroll_repo.create_or_replace_run(period_start, period_end, payout_day, generated_by)
+
+        results: list[EmployeePayrollBreakdown] = []
+        db_items: list[PayrollItem] = []
+
+        for user in users:
+            base = base_by_user[user.id]
+            motivation = motivation_by_user[user.id]
+            issued_bonus = issued_bonus_by_user[user.id]
+            dispute = dispute_by_user[user.id]
+            manager_bonus = manager_bonus_by_user[user.id]
+            adjustment = adjustments_by_user[user.id]
+
+            total = base + motivation + issued_bonus - dispute + manager_bonus + adjustment
+            total = self._money_round(total)
+
+            details = {
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "shifts_count": shifts_count_by_user[user.id],
+                "hours_total": str(self._money_round(shift_hours_by_user[user.id])),
+                "issued_items": str(self._money_round(issued_count_by_user[user.id])),
+            }
+
+            result = EmployeePayrollBreakdown(
+                user=user,
+                shifts_count=shifts_count_by_user[user.id],
+                hours_total=self._money_round(shift_hours_by_user[user.id]),
+                base_amount_rub=self._money_round(base),
+                motivation_amount_rub=self._money_round(motivation),
+                issued_bonus_rub=self._money_round(issued_bonus),
+                dispute_deduction_rub=self._money_round(dispute),
+                manager_bonus_rub=self._money_round(manager_bonus),
+                adjustments_rub=self._money_round(adjustment),
+                total_amount_rub=total,
+                issued_items_total=self._money_round(issued_count_by_user[user.id]),
+                details=details,
+            )
+            results.append(result)
+
+            db_items.append(
+                PayrollItem(
+                    run_id=run.id,
+                    user_id=user.id,
+                    shifts_count=result.shifts_count,
+                    hours_total=result.hours_total,
+                    base_amount_rub=result.base_amount_rub,
+                    motivation_amount_rub=result.motivation_amount_rub,
+                    issued_bonus_rub=result.issued_bonus_rub,
+                    dispute_deduction_rub=result.dispute_deduction_rub,
+                    manager_bonus_rub=result.manager_bonus_rub,
+                    adjustments_rub=result.adjustments_rub,
+                    total_amount_rub=result.total_amount_rub,
+                    details_json=json.dumps(result.details, ensure_ascii=False),
+                )
+            )
+
+        await self.payroll_repo.add_items(db_items)
+        return run.id, results
+
+    async def latest_for_user(self, user_id: int) -> PayrollItem | None:
+        return await self.payroll_repo.latest_user_item(user_id)
+
+    @staticmethod
+    def _is_shift_payable(shift: Shift) -> bool:
+        open_ok = shift.open_approval_status == ApprovalStatus.APPROVED
+        close_ok = shift.close_approval_status in (None, ApprovalStatus.APPROVED)
+        return open_ok and close_ok
+
+    @staticmethod
+    def _shift_hours(shift: Shift) -> Decimal:
+        mins = shift.duration_minutes or 0
+        return Decimal(mins) / Decimal("60")
+
+    def _calc_shift_base(self, shift: Shift, assignment, point) -> Decimal:
+        hours = self._shift_hours(shift)
+        is_ozon = bool(point and point.brand.value == "ozon")
+        if assignment is None:
+            if is_ozon:
+                return Decimal("1900")
+            return ZERO
+
+        shift_rate = Decimal(assignment.shift_rate_rub or 0)
+        hourly_rate = Decimal(assignment.hourly_rate_rub or 0)
+
+        # Если указана почасовая ставка и смена существенно меньше 8 часов,
+        # считаем почасовую оплату; иначе оплата за смену.
+        if hourly_rate > 0 and hours > 0 and hours < Decimal("8"):
+            return hourly_rate * hours
+        if shift_rate > 0:
+            return shift_rate
+        if is_ozon:
+            return Decimal("1900")
+        return hourly_rate * hours
+
+    def _distribute_main_record(
+        self,
+        record,
+        shifts_by_day_point,
+        user_id_by_last_name,
+        motivation_by_user,
+        issued_count_by_user,
+        tickets_by_user,
+    ) -> None:
+        user_id = record.user_id or self._match_user_id_from_name(record.manager_name, user_id_by_last_name)
+        acceptance = Decimal(record.acceptance_amount_rub or 0)
+        issued = Decimal(record.issued_items_count or 0)
+        tickets = Decimal(record.tickets_count or 0)
+
+        if user_id:
+            motivation_by_user[user_id] += acceptance
+            issued_count_by_user[user_id] += issued
+            tickets_by_user[user_id] += tickets
+            return
+
+        if not record.point_id:
+            return
+
+        day_shifts = shifts_by_day_point.get((record.record_date, record.point_id), [])
+        if not day_shifts:
+            return
+
+        total_minutes = sum(max(s.duration_minutes or 0, 1) for s in day_shifts)
+        if total_minutes <= 0:
+            return
+
+        for shift in day_shifts:
+            share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
+            motivation_by_user[shift.user_id] += acceptance * share
+            issued_count_by_user[shift.user_id] += issued * share
+            tickets_by_user[shift.user_id] += tickets * share
+
+    @staticmethod
+    def _match_user_id_from_name(name: str | None, user_id_by_last_name: dict[str, int]) -> int | None:
+        if not name:
+            return None
+        normalized = normalize_text(name)
+        if not normalized:
+            return None
+        first = normalized.split()[0]
+        return user_id_by_last_name.get(first)
+
+    async def _calc_manager_bonus_for_tenth(
+        self,
+        period_end: date,
+        users_map: dict[int, User],
+        user_id_by_last_name: dict[str, int],
+    ) -> defaultdict[int, Decimal]:
+        bonus_by_user: defaultdict[int, Decimal] = defaultdict(lambda: ZERO)
+        month_start, month_end = month_bounds(period_end)
+        records = await self.motivation_repo.list_between_source(MotivationSource.MAIN, month_start, month_end)
+
+        tickets_by_user: defaultdict[int, Decimal] = defaultdict(lambda: ZERO)
+        for rec in records:
+            user_id = rec.user_id or self._match_user_id_from_name(rec.manager_name, user_id_by_last_name)
+            if not user_id:
+                continue
+            tickets_by_user[user_id] += Decimal(rec.tickets_count or 0)
+
+        for user_id, user in users_map.items():
+            if user.manager_bonus_type == 1:
+                bonus_by_user[user_id] += Decimal(self.settings.manager_bonus_1)
+            elif user.manager_bonus_type == 2:
+                bonus_by_user[user_id] += Decimal(self.settings.manager_bonus_2)
+            elif user.manager_bonus_type == 3:
+                bonus_by_user[user_id] += tickets_by_user[user_id] * Decimal(self.settings.manager_bonus_3_per_ticket)
+
+        return bonus_by_user
+
+    @staticmethod
+    def _money_round(value: Decimal) -> Decimal:
+        return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
