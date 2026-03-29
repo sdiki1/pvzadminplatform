@@ -19,11 +19,9 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-
-class Base(DeclarativeBase):
-    pass
+from app.db.base import Base
 
 
 class RoleEnum(str, Enum):
@@ -106,6 +104,16 @@ class Point(Base):
     work_end: Mapped[time] = mapped_column(Time, nullable=False)
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # New fields for web admin
+    marketplace_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("marketplaces.id", ondelete="SET NULL"), nullable=True
+    )
+    short_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    address_normalized: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True, onupdate=datetime.utcnow)
 
     assignments: Mapped[list[EmployeePointAssignment]] = relationship(back_populates="point")
     shifts: Mapped[list[Shift]] = relationship(back_populates="point")

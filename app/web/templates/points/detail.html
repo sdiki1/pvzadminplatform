@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ item.name }} - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ item.name }}</h1>
+    <div>
+        <a href="/points/{{ item.id }}/edit" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Редактировать</a>
+        <a href="/points" class="btn btn-outline-secondary btn-sm">Назад</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Основная информация</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted" style="width:40%">ID</td><td>{{ item.id }}</td></tr>
+                <tr><td class="text-muted">Название</td><td>{{ item.name }}</td></tr>
+                <tr><td class="text-muted">Короткое название</td><td>{{ item.short_name or '-' }}</td></tr>
+                <tr><td class="text-muted">Адрес</td><td>{{ item.address }}</td></tr>
+                <tr><td class="text-muted">Нормализованный</td><td>{{ item.address_normalized or '-' }}</td></tr>
+                <tr><td class="text-muted">Код</td><td>{{ item.code or '-' }}</td></tr>
+                <tr><td class="text-muted">Бренд</td><td>{{ item.brand.value if item.brand.value is defined else item.brand }}</td></tr>
+                <tr><td class="text-muted">Статус</td><td>{% if item.is_active %}<span class="badge bg-success">Активна</span>{% else %}<span class="badge bg-secondary">Неактивна</span>{% endif %}</td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Координаты и режим</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted" style="width:40%">Широта</td><td>{{ item.latitude }}</td></tr>
+                <tr><td class="text-muted">Долгота</td><td>{{ item.longitude }}</td></tr>
+                <tr><td class="text-muted">Радиус (м)</td><td>{{ item.radius_m }}</td></tr>
+                <tr><td class="text-muted">Начало работы</td><td>{{ item.work_start.strftime('%H:%M') if item.work_start else '-' }}</td></tr>
+                <tr><td class="text-muted">Конец работы</td><td>{{ item.work_end.strftime('%H:%M') if item.work_end else '-' }}</td></tr>
+                <tr><td class="text-muted">Комментарий</td><td>{{ item.comment or '-' }}</td></tr>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

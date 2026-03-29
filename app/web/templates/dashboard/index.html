@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Главная - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Главная</h1>
+    <span class="text-muted">{{ today.strftime('%d.%m.%Y') }}</span>
+</div>
+
+<!-- Stats cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-value text-primary">{{ today_shifts }}</div>
+            <div class="stat-label">Смен сегодня</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-value text-danger">{{ open_sos }}</div>
+            <div class="stat-label">Открытых SOS</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-value text-warning">{{ new_defects }}</div>
+            <div class="stat-label">Новый брак</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-value text-info">{{ open_appeals }}</div>
+            <div class="stat-label">Оспаривания</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-value">{{ active_supplies }}</div>
+            <div class="stat-label">Заявки на расходники</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-value">{{ points_count }}</div>
+            <div class="stat-label">Активных точек</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-value">{{ employees_count }}</div>
+            <div class="stat-label">Сотрудников</div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <!-- Recent SOS -->
+    <div class="col-md-6">
+        <div class="table-container">
+            <div class="px-3 py-2 d-flex align-items-center justify-content-between border-bottom">
+                <h6 class="mb-0">Последние SOS</h6>
+                <a href="/sos" class="btn btn-sm btn-outline-primary">Все</a>
+            </div>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Точка</th>
+                        <th>Описание</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in recent_sos %}
+                    <tr>
+                        <td>{{ item.incident_date.strftime('%d.%m') }}</td>
+                        <td>{{ points_map.get(item.point_id, '')|attr('name') if points_map.get(item.point_id) else '-' }}</td>
+                        <td class="text-truncate" style="max-width: 200px;">{{ item.description[:50] }}{% if item.description|length > 50 %}...{% endif %}</td>
+                        <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted text-center py-3">Нет записей</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Recent Defects -->
+    <div class="col-md-6">
+        <div class="table-container">
+            <div class="px-3 py-2 d-flex align-items-center justify-content-between border-bottom">
+                <h6 class="mb-0">Последний брак</h6>
+                <a href="/defects" class="btn btn-sm btn-outline-primary">Все</a>
+            </div>
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Точка</th>
+                        <th>Тип</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in recent_defects %}
+                    <tr>
+                        <td>{{ item.incident_date.strftime('%d.%m') }}</td>
+                        <td>{{ points_map.get(item.point_id, '')|attr('name') if points_map.get(item.point_id) else '-' }}</td>
+                        <td>{{ item.incident_type }}</td>
+                        <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted text-center py-3">Нет записей</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

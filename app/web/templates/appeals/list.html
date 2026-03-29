@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "components/pagination.html" import render as pagination %}
+{% block title %}Оспаривания - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Оспаривания</h1>
+    <a href="/appeals/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Добавить</a>
+</div>
+
+<div class="filters-bar">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="point_id">
+                <option value="0">Все точки</option>
+                {% for p in points %}
+                <option value="{{ p.id }}" {% if point_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="status">
+                <option value="">Все</option>
+                {% for code, label in statuses %}
+                <option value="{{ code }}" {% if status == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="appeal_type">
+                <option value="">Все типы</option>
+                {% for code, label in appeal_types %}
+                <option value="{{ code }}" {% if appeal_type == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2"><input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}"></div>
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="search" value="{{ search }}" placeholder="ШК / тикет"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button></div>
+    </form>
+</div>
+
+<div class="table-container">
+    <table class="table">
+        <thead><tr><th>Дата</th><th>Точка</th><th>Тип</th><th>ШК</th><th>Тикет</th><th>Сумма</th><th>Статус</th><th>Менеджер</th><th>Списание</th><th></th></tr></thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.case_date.strftime('%d.%m') }}</td>
+                <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
+                <td>{{ item.appeal_type }}</td>
+                <td>{{ item.barcode or '-' }}</td>
+                <td>{{ item.ticket_number or '-' }}</td>
+                <td>{{ '%.2f'|format(item.amount) if item.amount else '-' }}</td>
+                <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                <td>{{ users_map.get(item.assigned_manager_employee_id).full_name if item.assigned_manager_employee_id and users_map.get(item.assigned_manager_employee_id) else (item.assigned_manager_raw or '-') }}</td>
+                <td>{% if item.charge_to_manager %}<span class="badge bg-danger">Да</span>{% else %}-{% endif %}</td>
+                <td><a href="/appeals/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-muted py-4">Нет записей</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {{ pagination(page, total_pages, total, '/appeals?point_id=' + point_id|string + '&status=' + status + '&appeal_type=' + appeal_type + '&date_from=' + date_from + '&search=' + search) }}
+</div>
+{% endblock %}

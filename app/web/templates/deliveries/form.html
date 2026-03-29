@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Новая поставка - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Новая запись поставки</h1>
+    <a href="/deliveries" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="form-card">
+    <form method="post" action="/deliveries/new">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Точка <span class="text-danger">*</span></label>
+                <select class="form-select" name="point_id" required>
+                    <option value="">Выберите</option>
+                    {% for p in points %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Дата <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="stat_date" required>
+            </div>
+            <div class="col-12"><hr></div>
+            <div class="col-md-3">
+                <label class="form-label">Ночная</label>
+                <input type="text" class="form-control" name="night_raw" placeholder="91+64 или 155">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Утренняя</label>
+                <input type="text" class="form-control" name="morning_raw" placeholder="91+64 или 155">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Дневная</label>
+                <input type="text" class="form-control" name="day_raw" placeholder="91+64 или 155">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Вечерняя</label>
+                <input type="text" class="form-control" name="evening_raw" placeholder="91+64 или 155">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Комментарий</label>
+                <textarea class="form-control" name="comment" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

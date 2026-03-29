@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "components/pagination.html" import render as pagination %}
+{% block title %}Пользователи - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Пользователи системы</h1>
+    <a href="/users/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Добавить</a>
+</div>
+
+<div class="filters-bar">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="search" value="{{ search }}" placeholder="Поиск по ФИО / логину"></div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="role">
+                <option value="">Все роли</option>
+                {% for code, label in web_roles %}
+                <option value="{{ code }}" {% if role == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button></div>
+    </form>
+</div>
+
+<div class="table-container">
+    <table class="table">
+        <thead><tr><th>ID</th><th>Логин</th><th>ФИО</th><th>Роль</th><th>Статус</th><th>Последний вход</th><th></th></tr></thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.login }}</td>
+                <td>{{ item.full_name }}</td>
+                <td><span class="badge bg-info">{{ item.role }}</span></td>
+                <td>{% if item.is_active %}<span class="badge bg-success">Активен</span>{% else %}<span class="badge bg-secondary">Неактивен</span>{% endif %}</td>
+                <td>{{ item.last_login_at.strftime('%d.%m.%Y %H:%M') if item.last_login_at else 'Никогда' }}</td>
+                <td><a href="/users/{{ item.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">Нет записей</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {{ pagination(page, total_pages, total, '/users?search=' + search + '&role=' + role) }}
+</div>
+{% endblock %}

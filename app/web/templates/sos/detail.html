@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}SOS #{{ item.id }} - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>SOS #{{ item.id }}</h1>
+    <div>
+        <a href="/sos/{{ item.id }}/edit" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Редактировать</a>
+        <a href="/sos" class="btn btn-outline-secondary btn-sm">Назад</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Информация</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted" style="width:40%">Дата</td><td>{{ item.incident_date.strftime('%d.%m.%Y') }}</td></tr>
+                <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
+                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td></tr>
+                <tr><td class="text-muted">Клиент</td><td>{{ item.client_name or '-' }}</td></tr>
+                <tr><td class="text-muted">Телефон</td><td>{{ item.client_phone or '-' }}</td></tr>
+                <tr><td class="text-muted">Ячейка</td><td>{{ item.cell_code or '-' }}</td></tr>
+                <tr><td class="text-muted">Сумма</td><td>{{ '%.2f руб.'|format(item.total_amount) if item.total_amount else '-' }}</td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Описание</h6>
+            <p>{{ item.description }}</p>
+            {% if item.products_raw %}
+            <h6>Данные по товарам</h6>
+            <p class="text-muted small">{{ item.products_raw }}</p>
+            {% endif %}
+            {% if item.resolution_comment %}
+            <h6>Решение</h6>
+            <p>{{ item.resolution_comment }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

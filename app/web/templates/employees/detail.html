@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ item.full_name }} - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ item.full_name }}</h1>
+    <div>
+        <a href="/employees/{{ item.id }}/edit" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Редактировать</a>
+        <a href="/employees" class="btn btn-outline-secondary btn-sm">Назад</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Информация</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted" style="width:40%">ID</td><td>{{ item.id }}</td></tr>
+                <tr><td class="text-muted">ФИО</td><td>{{ item.full_name }}</td></tr>
+                <tr><td class="text-muted">Фамилия</td><td>{{ item.last_name or '-' }}</td></tr>
+                <tr><td class="text-muted">Телефон</td><td>{{ item.phone or '-' }}</td></tr>
+                <tr><td class="text-muted">Telegram ID</td><td>{{ item.telegram_id }}</td></tr>
+                <tr><td class="text-muted">Роль</td><td>{{ item.role.value if item.role.value is defined else item.role }}</td></tr>
+                <tr><td class="text-muted">Статус</td><td>{% if item.is_active %}<span class="badge bg-success">Активен</span>{% else %}<span class="badge bg-secondary">Неактивен</span>{% endif %}</td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Алиасы (короткие имена)</h6>
+            {% for alias in aliases %}
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>{{ alias.alias_text }} <small class="text-muted">({{ alias.alias_type }})</small></span>
+            </div>
+            {% else %}
+            <p class="text-muted small">Нет алиасов</p>
+            {% endfor %}
+
+            <hr>
+            <form method="post" action="/employees/{{ item.id }}/aliases" class="row g-2">
+                <div class="col">
+                    <input type="text" class="form-control form-control-sm" name="alias_text" placeholder="Новый алиас" required>
+                </div>
+                <div class="col-auto">
+                    <select class="form-select form-select-sm" name="alias_type">
+                        <option value="short_name">Короткое имя</option>
+                        <option value="surname">Фамилия</option>
+                        <option value="full_name">ФИО</option>
+                        <option value="initials">Инициалы</option>
+                        <option value="typo">Опечатка</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">Добавить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% macro render(page, total_pages, total, base_url) %}
+<div class="pagination-wrapper">
+    <span>Записей: {{ total }}</span>
+    {% if total_pages > 1 %}
+    <nav>
+        <ul class="pagination pagination-sm mb-0">
+            {% if page > 1 %}
+            <li class="page-item"><a class="page-link" href="{{ base_url }}&page={{ page - 1 }}">&#8249;</a></li>
+            {% endif %}
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+                {% elif p <= 3 or p > total_pages - 3 or (p >= page - 1 and p <= page + 1) %}
+                <li class="page-item"><a class="page-link" href="{{ base_url }}&page={{ p }}">{{ p }}</a></li>
+                {% elif p == 4 or p == total_pages - 3 %}
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+            {% endfor %}
+            {% if page < total_pages %}
+            <li class="page-item"><a class="page-link" href="{{ base_url }}&page={{ page + 1 }}">&#8250;</a></li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+</div>
+{% endmacro %}

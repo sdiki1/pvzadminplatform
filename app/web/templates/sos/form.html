@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редактировать' if item else 'Новая' }} SOS - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ 'Редактировать SOS' if item else 'Новая SOS-ситуация' }}</h1>
+    <a href="/sos" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="form-card">
+    <form method="post" action="{{ '/sos/' + item.id|string + '/edit' if item else '/sos/new' }}">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Точка <span class="text-danger">*</span></label>
+                <select class="form-select" name="point_id" required>
+                    <option value="">Выберите</option>
+                    {% for p in points %}
+                    <option value="{{ p.id }}" {% if item and item.point_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Дата <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="incident_date" value="{{ item.incident_date if item else '' }}" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Статус</label>
+                <select class="form-select" name="status">
+                    {% for code, label in statuses %}
+                    <option value="{{ code }}" {% if item and item.status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">ФИО клиента</label>
+                <input type="text" class="form-control" name="client_name" value="{{ item.client_name if item and item.client_name else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Телефон клиента</label>
+                <input type="text" class="form-control" name="client_phone" value="{{ item.client_phone if item and item.client_phone else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Ячейка / место</label>
+                <input type="text" class="form-control" name="cell_code" value="{{ item.cell_code if item and item.cell_code else '' }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Описание <span class="text-danger">*</span></label>
+                <textarea class="form-control" name="description" rows="3" required>{{ item.description if item else '' }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Данные по товарам (raw)</label>
+                <textarea class="form-control" name="products_raw" rows="2">{{ item.products_raw if item and item.products_raw else '' }}</textarea>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Сумма</label>
+                <input type="text" class="form-control" name="total_amount" value="{{ item.total_amount if item and item.total_amount else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Сотрудник</label>
+                <select class="form-select" name="recorded_by_employee_id">
+                    <option value="">-</option>
+                    {% for e in employees %}
+                    <option value="{{ e.id }}" {% if item and item.recorded_by_employee_id == e.id %}selected{% endif %}>{{ e.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if item %}
+            <div class="col-12">
+                <label class="form-label">Комментарий по решению</label>
+                <textarea class="form-control" name="resolution_comment" rows="2">{{ item.resolution_comment if item and item.resolution_comment else '' }}</textarea>
+            </div>
+            {% endif %}
+        </div>
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="/sos" class="btn btn-outline-secondary ms-2">Отмена</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

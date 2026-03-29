@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Новая заявка - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Новая заявка на расходники</h1>
+    <a href="/supplies" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="form-card">
+    <form method="post" action="/supplies/new">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Точка <span class="text-danger">*</span></label>
+                <select class="form-select" name="point_id" required>
+                    <option value="">Выберите</option>
+                    {% for p in points %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Дата заявки <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="request_date" required>
+            </div>
+            <div class="col-12"><hr><h6>Позиции</h6></div>
+            {% for si in supply_items %}
+            <div class="col-md-4">
+                <label class="form-label small">{{ si.name }} ({{ si.unit }})</label>
+                <input type="number" step="0.01" class="form-control form-control-sm" name="qty_{{ si.id }}" placeholder="0">
+            </div>
+            {% endfor %}
+            <div class="col-12">
+                <label class="form-label">Комментарий</label>
+                <textarea class="form-control" name="comment" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Создать заявку</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

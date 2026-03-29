@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Новый отчёт - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Новый отчёт за день</h1>
+    <a href="/statistics" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="form-card">
+    <form method="post" action="/statistics/new">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Точка <span class="text-danger">*</span></label>
+                <select class="form-select" name="point_id" required>
+                    <option value="">Выберите точку</option>
+                    {% for p in points %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Дата <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="stat_date" required>
+            </div>
+            <div class="col-12"><hr></div>
+
+            {% for d in metric_defs %}
+            <div class="col-md-4">
+                <label class="form-label">{{ d.name }}</label>
+                <input type="text" class="form-control" name="metric_{{ d.id }}" placeholder="{{ d.value_type }}">
+            </div>
+            {% endfor %}
+
+            <div class="col-12">
+                <label class="form-label">Комментарий</label>
+                <textarea class="form-control" name="comment" rows="2"></textarea>
+            </div>
+        </div>
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="/statistics" class="btn btn-outline-secondary ms-2">Отмена</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

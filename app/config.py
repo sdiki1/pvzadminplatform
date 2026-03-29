@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,10 +11,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     bot_token: str = Field(alias="BOT_TOKEN")
-    database_url: str = Field(default="sqlite+aiosqlite:///./pvz_bot.db", alias="DATABASE_URL")
+    database_url: str = Field(default="postgresql+asyncpg://pvz:pvz@localhost:5432/pvz", alias="DATABASE_URL")
     timezone: str = Field(default="Europe/Moscow", alias="TIMEZONE")
 
-    admin_ids: list[int] = Field(default_factory=list, alias="ADMIN_IDS")
+    admin_ids_raw: str = Field(default="", alias="ADMIN_IDS")
     confirm_request_time: str = Field(default="19:00", alias="CONFIRM_REQUEST_TIME")
 
     google_service_account_file: Optional[str] = Field(default=None, alias="GOOGLE_SERVICE_ACCOUNT_FILE")
@@ -44,18 +44,19 @@ class Settings(BaseSettings):
     manager_bonus_2: int = Field(default=5000, alias="MANAGER_BONUS_2")
     manager_bonus_3_per_ticket: int = Field(default=200, alias="MANAGER_BONUS_3_PER_TICKET")
 
-    @field_validator("admin_ids", mode="before")
-    @classmethod
-    def _parse_admin_ids(cls, value: object) -> list[int]:
-        if value is None:
+    # Web admin panel settings
+    web_host: str = Field(default="0.0.0.0", alias="WEB_HOST")
+    web_port: int = Field(default=8000, alias="WEB_PORT")
+    web_secret_key: str = Field(default="change-me-in-production", alias="WEB_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_expire_minutes: int = Field(default=1440, alias="JWT_EXPIRE_MINUTES")
+
+    @property
+    def admin_ids(self) -> list[int]:
+        raw = self.admin_ids_raw
+        if not raw or not raw.strip():
             return []
-        if isinstance(value, list):
-            return [int(v) for v in value]
-        if isinstance(value, str):
-            if not value.strip():
-                return []
-            return [int(v.strip()) for v in value.split(",") if v.strip()]
-        raise ValueError("ADMIN_IDS must be list[int] or comma-separated string")
+        return [int(v.strip()) for v in raw.split(",") if v.strip()]
 
 
 @lru_cache(maxsize=1)

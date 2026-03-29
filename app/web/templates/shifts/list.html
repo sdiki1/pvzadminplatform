@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "components/pagination.html" import render as pagination %}
+{% block title %}График - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>График смен</h1>
+    <a href="/shifts/calendar" class="btn btn-outline-primary btn-sm"><i class="bi bi-calendar3"></i> Календарь</a>
+</div>
+
+<div class="filters-bar">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2">
+            <label class="form-label small">Точка</label>
+            <select class="form-select form-select-sm" name="point_id">
+                <option value="0">Все точки</option>
+                {% for p in points %}
+                <option value="{{ p.id }}" {% if point_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">С</label>
+            <input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">По</label>
+            <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}">
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> Найти</button>
+        </div>
+    </form>
+</div>
+
+<div class="table-container">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Сотрудник</th>
+                <th>Точка</th>
+                <th>Открыта</th>
+                <th>Закрыта</th>
+                <th>Длит.</th>
+                <th>Статус</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.shift_date.strftime('%d.%m.%Y') }}</td>
+                <td>{{ users_map.get(item.user_id).full_name if users_map.get(item.user_id) else '-' }}</td>
+                <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
+                <td>{{ item.opened_at.strftime('%H:%M') if item.opened_at else '-' }}</td>
+                <td>{{ item.closed_at.strftime('%H:%M') if item.closed_at else '-' }}</td>
+                <td>{{ item.duration_minutes or '-' }} мин</td>
+                <td>
+                    {% if item.state.value == 'open' or item.state == 'open' %}
+                    <span class="badge bg-primary">Открыта</span>
+                    {% else %}
+                    <span class="badge bg-success">Закрыта</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">Нет записей</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {{ pagination(page, total_pages, total, '/shifts?point_id=' + point_id|string + '&date_from=' + date_from + '&date_to=' + date_to) }}
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редактировать' if item else 'Новый' }} инцидент - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ 'Редактировать инцидент' if item else 'Новый инцидент (брак)' }}</h1>
+    <a href="/defects" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="form-card">
+    <form method="post" action="{{ '/defects/' + item.id|string + '/edit' if item else '/defects/new' }}">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Точка <span class="text-danger">*</span></label>
+                <select class="form-select" name="point_id" required>
+                    <option value="">Выберите</option>
+                    {% for p in points %}
+                    <option value="{{ p.id }}" {% if item and item.point_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Дата <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="incident_date" value="{{ item.incident_date if item else '' }}" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Тип инцидента</label>
+                <select class="form-select" name="incident_type">
+                    {% for code, label in incident_types %}
+                    <option value="{{ code }}" {% if item and item.incident_type == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Кто обнаружил</label>
+                <select class="form-select" name="detected_by_role">
+                    {% for code, label in detected_by %}
+                    <option value="{{ code }}" {% if item and item.detected_by_role == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Этап обнаружения</label>
+                <select class="form-select" name="detected_stage">
+                    {% for code, label in detected_stages %}
+                    <option value="{{ code }}" {% if item and item.detected_stage == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Статус</label>
+                <select class="form-select" name="status">
+                    {% for code, label in statuses %}
+                    <option value="{{ code }}" {% if item and item.status == code %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Штрихкод</label>
+                <input type="text" class="form-control" name="barcode" value="{{ item.barcode if item and item.barcode else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Сумма</label>
+                <input type="text" class="form-control" name="amount" value="{{ item.amount if item and item.amount else '' }}" placeholder="0.00">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Сотрудник</label>
+                <select class="form-select" name="recorded_by_employee_id">
+                    <option value="">-</option>
+                    {% for e in employees %}
+                    <option value="{{ e.id }}" {% if item and item.recorded_by_employee_id == e.id %}selected{% endif %}>{{ e.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Название товара</label>
+                <input type="text" class="form-control" name="product_title" value="{{ item.product_title if item and item.product_title else '' }}">
+            </div>
+            <div class="col-12">
+                <label class="form-label">Описание проблемы</label>
+                <textarea class="form-control" name="problem_description" rows="3">{{ item.problem_description if item and item.problem_description else '' }}</textarea>
+            </div>
+            {% if item %}
+            <div class="col-12">
+                <label class="form-label">Комментарий по решению</label>
+                <textarea class="form-control" name="resolution_comment" rows="2">{{ item.resolution_comment if item and item.resolution_comment else '' }}</textarea>
+            </div>
+            {% endif %}
+        </div>
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="/defects" class="btn btn-outline-secondary ms-2">Отмена</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

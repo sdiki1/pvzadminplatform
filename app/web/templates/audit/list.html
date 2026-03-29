@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "components/pagination.html" import render as pagination %}
+{% block title %}История изменений - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>История изменений</h1>
+</div>
+
+<div class="filters-bar">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="entity_type" value="{{ entity_type }}" placeholder="Тип сущности"></div>
+        <div class="col-md-2"><input type="text" class="form-control form-control-sm" name="action_type" value="{{ action_type }}" placeholder="Действие"></div>
+        <div class="col-md-2"><input type="date" class="form-control form-control-sm" name="date_from" value="{{ date_from }}"></div>
+        <div class="col-md-2"><input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}"></div>
+        <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button></div>
+    </form>
+</div>
+
+<div class="table-container">
+    <table class="table">
+        <thead><tr><th>Дата</th><th>Пользователь</th><th>Действие</th><th>Сущность</th><th>ID</th></tr></thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.changed_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>{{ users_map.get(item.changed_by_user_id).full_name if item.changed_by_user_id and users_map.get(item.changed_by_user_id) else '-' }}</td>
+                <td><span class="badge bg-secondary">{{ item.action_type }}</span></td>
+                <td>{{ item.entity_type }}</td>
+                <td>{{ item.entity_id or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">Нет записей</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {{ pagination(page, total_pages, total, '/audit?entity_type=' + entity_type + '&action_type=' + action_type + '&date_from=' + date_from + '&date_to=' + date_to) }}
+</div>
+{% endblock %}

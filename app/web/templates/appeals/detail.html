@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Оспаривание #{{ item.id }} - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Оспаривание #{{ item.id }}</h1>
+    <a href="/appeals" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Информация</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted" style="width:40%">Дата</td><td>{{ item.case_date.strftime('%d.%m.%Y') }}</td></tr>
+                <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
+                <tr><td class="text-muted">Тип</td><td>{{ item.appeal_type }}</td></tr>
+                <tr><td class="text-muted">ШК</td><td>{{ item.barcode or '-' }}</td></tr>
+                <tr><td class="text-muted">Тикет</td><td>{{ item.ticket_number or '-' }}</td></tr>
+                <tr><td class="text-muted">Сумма</td><td>{{ '%.2f руб.'|format(item.amount) if item.amount else '-' }}</td></tr>
+                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td></tr>
+                <tr><td class="text-muted">Менеджер</td><td>{{ users_map.get(item.assigned_manager_employee_id).full_name if item.assigned_manager_employee_id and users_map.get(item.assigned_manager_employee_id) else (item.assigned_manager_raw or '-') }}</td></tr>
+                <tr><td class="text-muted">Списание</td><td>{% if item.charge_to_manager %}<span class="badge bg-danger">Да</span>{% else %}Нет{% endif %}</td></tr>
+                <tr><td class="text-muted">Дедлайн</td><td>{{ item.deadline_date.strftime('%d.%m.%Y') if item.deadline_date else '-' }}</td></tr>
+                {% if item.non_appeal_reason %}<tr><td class="text-muted">Причина</td><td>{{ item.non_appeal_reason }}</td></tr>{% endif %}
+                {% if item.result_comment %}<tr><td class="text-muted">Результат</td><td>{{ item.result_comment }}</td></tr>{% endif %}
+            </table>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Обратная связь</h6>
+            {% for fb in feedbacks %}
+            <div class="border-bottom pb-2 mb-2">
+                <div class="d-flex justify-content-between">
+                    <strong>{{ fb.reviewer_name }}</strong>
+                    <small class="text-muted">{{ fb.created_at.strftime('%d.%m.%Y %H:%M') }}</small>
+                </div>
+                <p class="mb-0 small">{{ fb.feedback_text }}</p>
+            </div>
+            {% else %}
+            <p class="text-muted small">Нет отзывов</p>
+            {% endfor %}
+
+            <hr>
+            <form method="post" action="/appeals/{{ item.id }}/feedback">
+                <div class="mb-2">
+                    <textarea class="form-control form-control-sm" name="feedback_text" rows="2" placeholder="Добавить комментарий" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-sm btn-outline-primary">Добавить</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

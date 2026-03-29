@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Заявка #{{ item.id }} - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Заявка #{{ item.id }}</h1>
+    <a href="/supplies" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="form-card">
+            <h6 class="mb-3">Информация</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted">Дата</td><td>{{ item.request_date.strftime('%d.%m.%Y') }}</td></tr>
+                <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
+                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td></tr>
+                <tr><td class="text-muted">Комментарий</td><td>{{ item.comment or '-' }}</td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="table-container">
+            <div class="px-3 py-2 border-bottom"><h6 class="mb-0">Позиции</h6></div>
+            <table class="table">
+                <thead><tr><th>Расходник</th><th>Запрошено</th><th>Подтверждено</th><th>Выдано</th><th>Статус</th></tr></thead>
+                <tbody>
+                    {% for line in line_items %}
+                    <tr>
+                        <td>{{ supply_items_map.get(line.supply_item_id).name if supply_items_map.get(line.supply_item_id) else '?' }}</td>
+                        <td>{{ line.requested_qty or '-' }}</td>
+                        <td>{{ line.approved_qty or '-' }}</td>
+                        <td>{{ line.delivered_qty or '-' }}</td>
+                        <td><span class="badge badge-status-{{ line.item_status }}">{{ line.item_status }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-center text-muted py-3">Нет позиций</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

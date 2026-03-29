@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Новая анкета - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Новая анкета</h1>
+    <a href="/marketing" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="form-card">
+    <form method="post" action="/marketing/new">
+        <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">ФИО ребёнка <span class="text-danger">*</span></label><input type="text" class="form-control" name="child_full_name" required></div>
+            <div class="col-md-2"><label class="form-label">Возраст</label><input type="text" class="form-control" name="child_age_raw" placeholder="7 лет"></div>
+            <div class="col-md-4"><label class="form-label">ФИО родителя <span class="text-danger">*</span></label><input type="text" class="form-control" name="parent_full_name" required></div>
+            <div class="col-md-2"><label class="form-label">Дата <span class="text-danger">*</span></label><input type="date" class="form-control" name="survey_date" required></div>
+            <div class="col-md-4"><label class="form-label">Телефон</label><input type="text" class="form-control" name="phone"></div>
+            <div class="col-md-8"><label class="form-label">Адрес проживания</label><input type="text" class="form-control" name="residential_address"></div>
+            <div class="col-md-4"><label class="form-label">На какой пункт ходят</label><input type="text" class="form-control" name="current_pickup_point_text"></div>
+            <div class="col-md-8"><label class="form-label">Чем привлекает</label><textarea class="form-control" name="attraction_reason" rows="2"></textarea></div>
+            <div class="col-md-3">
+                <div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="buys_on_wb" id="buys_on_wb"><label class="form-check-label" for="buys_on_wb">Покупает на WB</label></div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="coupon_given" id="coupon_given"><label class="form-check-label" for="coupon_given">Купон выдан</label></div>
+            </div>
+            <div class="col-md-3">
+                <div class="form-check mt-4"><input class="form-check-input" type="checkbox" name="personal_data_consent" id="pd_consent" required><label class="form-check-label" for="pd_consent">Согласие на ПД <span class="text-danger">*</span></label></div>
+            </div>
+            <div class="col-12"><label class="form-label">Комментарий</label><textarea class="form-control" name="comment" rows="2"></textarea></div>
+        </div>
+        <div class="mt-4"><button type="submit" class="btn btn-primary">Сохранить</button></div>
+    </form>
+</div>
+{% endblock %}

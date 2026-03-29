@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Инцидент #{{ item.id }} - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Инцидент #{{ item.id }}</h1>
+    <div>
+        <a href="/defects/{{ item.id }}/edit" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Редактировать</a>
+        <a href="/defects" class="btn btn-outline-secondary btn-sm">Назад</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Основное</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted" style="width:40%">Дата</td><td>{{ item.incident_date.strftime('%d.%m.%Y') }}</td></tr>
+                <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
+                <tr><td class="text-muted">Тип</td><td>{{ item.incident_type }}</td></tr>
+                <tr><td class="text-muted">Кто обнаружил</td><td>{{ item.detected_by_role }}</td></tr>
+                <tr><td class="text-muted">Этап</td><td>{{ item.detected_stage }}</td></tr>
+                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td></tr>
+            </table>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="form-card">
+            <h6 class="mb-3">Детали</h6>
+            <table class="table table-sm table-borderless">
+                <tr><td class="text-muted" style="width:40%">Штрихкод</td><td>{{ item.barcode or '-' }}</td></tr>
+                <tr><td class="text-muted">Товар</td><td>{{ item.product_title or '-' }}</td></tr>
+                <tr><td class="text-muted">Сумма</td><td>{{ '%.2f руб.'|format(item.amount) if item.amount else '-' }}</td></tr>
+                <tr><td class="text-muted">Сотрудник</td><td>{{ users_map.get(item.recorded_by_employee_id).full_name if item.recorded_by_employee_id and users_map.get(item.recorded_by_employee_id) else '-' }}</td></tr>
+                <tr><td class="text-muted">Описание</td><td>{{ item.problem_description or '-' }}</td></tr>
+                <tr><td class="text-muted">Решение</td><td>{{ item.resolution_comment or '-' }}</td></tr>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

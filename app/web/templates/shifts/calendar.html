@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Календарь смен - PVZ Admin{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Календарь смен</h1>
+    <div>
+        <select id="pointFilter" class="form-select form-select-sm d-inline-block" style="width: auto;">
+            <option value="0">Все точки</option>
+            {% for p in points %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+        </select>
+        <a href="/shifts" class="btn btn-outline-secondary btn-sm ms-2"><i class="bi bi-list"></i> Список</a>
+    </div>
+</div>
+
+<div class="form-card">
+    <div id="calendar"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var calendarEl = document.getElementById('calendar');
+    var pointFilter = document.getElementById('pointFilter');
+
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'ru',
+        height: 'auto',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek'
+        },
+        events: function(info, successCallback, failureCallback) {
+            var pointId = pointFilter.value || '0';
+            fetch('/shifts/api/events?start=' + info.startStr + '&end=' + info.endStr + '&point_id=' + pointId)
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) { successCallback(data); })
+                .catch(function(err) { failureCallback(err); });
+        }
+    });
+
+    calendar.render();
+
+    pointFilter.addEventListener('change', function() {
+        calendar.refetchEvents();
+    });
+});
+</script>
+{% endblock %}

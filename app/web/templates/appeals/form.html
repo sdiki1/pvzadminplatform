@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Новое оспаривание - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Новое оспаривание</h1>
+    <a href="/appeals" class="btn btn-outline-secondary btn-sm">Назад</a>
+</div>
+
+<div class="form-card">
+    <form method="post" action="/appeals/new">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Точка <span class="text-danger">*</span></label>
+                <select class="form-select" name="point_id" required>
+                    <option value="">Выберите</option>
+                    {% for p in points %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Дата <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="case_date" required>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Тип</label>
+                <select class="form-select" name="appeal_type">
+                    {% for code, label in appeal_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3"><label class="form-label">Штрихкод</label><input type="text" class="form-control" name="barcode"></div>
+            <div class="col-md-3"><label class="form-label">Тикет</label><input type="text" class="form-control" name="ticket_number"></div>
+            <div class="col-md-3"><label class="form-label">Сумма</label><input type="text" class="form-control" name="amount"></div>
+            <div class="col-md-3">
+                <label class="form-label">Статус</label>
+                <select class="form-select" name="status">
+                    {% for code, label in statuses %}
+                    <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Менеджер</label>
+                <select class="form-select" name="assigned_manager_employee_id">
+                    <option value="">-</option>
+                    {% for e in employees %}
+                    <option value="{{ e.id }}">{{ e.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4"><label class="form-label">Дедлайн</label><input type="date" class="form-control" name="deadline_date"></div>
+            <div class="col-md-4">
+                <label class="form-label">&nbsp;</label>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="charge_to_manager" id="charge_to_manager">
+                    <label class="form-check-label" for="charge_to_manager">Списание с менеджера</label>
+                </div>
+            </div>
+            <div class="col-md-6"><label class="form-label">Причина (если не оспорено)</label><textarea class="form-control" name="non_appeal_reason" rows="2"></textarea></div>
+            <div class="col-md-6"><label class="form-label">Итоговый комментарий</label><textarea class="form-control" name="result_comment" rows="2"></textarea></div>
+        </div>
+        <div class="mt-4">
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

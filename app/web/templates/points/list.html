@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "components/pagination.html" import render as pagination %}
+{% block title %}Точки - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Точки</h1>
+    <a href="/points/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Добавить</a>
+</div>
+
+<div class="filters-bar">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <input type="text" class="form-control form-control-sm" name="search" value="{{ search }}" placeholder="Поиск по названию/адресу">
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="brand">
+                <option value="">Все бренды</option>
+                <option value="wb" {% if brand == 'wb' %}selected{% endif %}>WB</option>
+                <option value="ozon" {% if brand == 'ozon' %}selected{% endif %}>Ozon</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="status">
+                <option value="">Все статусы</option>
+                <option value="active" {% if status == 'active' %}selected{% endif %}>Активные</option>
+                <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Неактивные</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> Найти</button>
+        </div>
+    </form>
+</div>
+
+<div class="table-container">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Название</th>
+                <th>Адрес</th>
+                <th>Бренд</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td><a href="/points/{{ item.id }}">{{ item.name }}</a></td>
+                <td>{{ item.address }}</td>
+                <td><span class="badge bg-secondary">{{ item.brand.value if item.brand.value is defined else item.brand }}</span></td>
+                <td>
+                    {% if item.is_active %}
+                    <span class="badge bg-success">Активна</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Неактивна</span>
+                    {% endif %}
+                </td>
+                <td><a href="/points/{{ item.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-4">Нет записей</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {{ pagination(page, total_pages, total, '/points?search=' + search + '&brand=' + brand + '&status=' + status) }}
+</div>
+{% endblock %}

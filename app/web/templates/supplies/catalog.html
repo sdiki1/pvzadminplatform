@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Каталог расходников - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Каталог расходников</h1>
+    <a href="/supplies" class="btn btn-outline-secondary btn-sm">Назад к заявкам</a>
+</div>
+
+<div class="table-container">
+    <table class="table">
+        <thead><tr><th>ID</th><th>Название</th><th>Категория</th><th>Ед. изм.</th><th>Статус</th></tr></thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.name }}</td>
+                <td>{{ item.category or '-' }}</td>
+                <td>{{ item.unit }}</td>
+                <td>{% if item.is_active %}<span class="badge bg-success">Активен</span>{% else %}<span class="badge bg-secondary">Неактивен</span>{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">Каталог пуст</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

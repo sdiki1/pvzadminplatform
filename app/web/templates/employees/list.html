@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "components/pagination.html" import render as pagination %}
+{% block title %}Сотрудники - PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Сотрудники</h1>
+</div>
+
+<div class="filters-bar">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <input type="text" class="form-control form-control-sm" name="search" value="{{ search }}" placeholder="Поиск по ФИО / телефону">
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="role">
+                <option value="">Все роли</option>
+                <option value="employee" {% if role == 'employee' %}selected{% endif %}>Сотрудник</option>
+                <option value="admin" {% if role == 'admin' %}selected{% endif %}>Админ</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="status">
+                <option value="">Все</option>
+                <option value="active" {% if status == 'active' %}selected{% endif %}>Активные</option>
+                <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Неактивные</option>
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> Найти</button>
+        </div>
+    </form>
+</div>
+
+<div class="table-container">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>ФИО</th>
+                <th>Телефон</th>
+                <th>Роль</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td><a href="/employees/{{ item.id }}">{{ item.full_name }}</a></td>
+                <td>{{ item.phone or '-' }}</td>
+                <td><span class="badge bg-secondary">{{ item.role.value if item.role.value is defined else item.role }}</span></td>
+                <td>
+                    {% if item.is_active %}
+                    <span class="badge bg-success">Активен</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Неактивен</span>
+                    {% endif %}
+                </td>
+                <td><a href="/employees/{{ item.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-4">Нет записей</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {{ pagination(page, total_pages, total, '/employees?search=' + search + '&role=' + role + '&status=' + status) }}
+</div>
+{% endblock %}
