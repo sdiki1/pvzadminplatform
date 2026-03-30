@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Новая корректировка — PVZ Admin{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">Новая корректировка</h4>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card" style="max-width: 600px;">
+    <div class="card-body">
+        <form method="POST" action="/adjustments/new">
+            <div class="mb-3">
+                <label class="form-label">Сотрудник</label>
+                <select name="user_id" class="form-select" required>
+                    <option value="">— Выберите —</option>
+                    {% for emp in employees %}
+                    <option value="{{ emp.id }}">{{ emp.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="row mb-3">
+                <div class="col">
+                    <label class="form-label">Начало периода</label>
+                    <input type="date" name="period_start" class="form-control" required>
+                </div>
+                <div class="col">
+                    <label class="form-label">Конец периода</label>
+                    <input type="date" name="period_end" class="form-control" required>
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Тип</label>
+                <select name="adjustment_type" class="form-select" required>
+                    {% for code, label in adjustment_types %}
+                    <option value="{{ code }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Сумма (руб.)</label>
+                <input type="number" name="amount_rub" class="form-control" step="0.01" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Комментарий</label>
+                <textarea name="comment" class="form-control" rows="2"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="/adjustments" class="btn btn-secondary ms-2">Отмена</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

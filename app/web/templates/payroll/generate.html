@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Формирование ведомости — PVZ Admin{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">Формирование расчётной ведомости</h4>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-7">
+        <div class="card">
+            <div class="card-body">
+                <form method="POST" action="/payroll/generate" x-data="{
+                    payoutDay: '10',
+                    p10Start: '{{ p10_start }}', p10End: '{{ p10_end }}',
+                    p25Start: '{{ p25_start }}', p25End: '{{ p25_end }}'
+                }">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">День выплаты</label>
+                        <select name="payout_day" class="form-select" required
+                                x-model="payoutDay"
+                                @change="
+                                    if (payoutDay === '10') {
+                                        $refs.pstart.value = p10Start;
+                                        $refs.pend.value = p10End;
+                                    } else {
+                                        $refs.pstart.value = p25Start;
+                                        $refs.pend.value = p25End;
+                                    }
+                                ">
+                            <option value="10">10-е число</option>
+                            <option value="25">25-е число</option>
+                        </select>
+                    </div>
+
+                    <div class="alert alert-light border small" x-show="payoutDay === '10'">
+                        <strong>10-е число</strong> — период: 16-е ... последний день предыдущего месяца.<br>
+                        Дополнительно для управляющих менеджеров:<br>
+                        <ul class="mb-0 mt-1">
+                            <li>Тип 1 — управление пунктами: <strong>10 000 ₽</strong></li>
+                            <li>Тип 2 — инвентаризации: <strong>5 000 ₽</strong></li>
+                            <li>Тип 3 — тикеты оспаривания (1–31 месяца): кол-во &times; <strong>200 ₽</strong></li>
+                        </ul>
+                    </div>
+
+                    <div class="alert alert-light border small" x-show="payoutDay === '25'">
+                        <strong>25-е число</strong> — период: 1-е ... 15-е текущего месяца.<br>
+                        Бонусы менеджера не начисляются.
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col">
+                            <label class="form-label">Начало периода</label>
+                            <input type="date" name="period_start" class="form-control" required
+                                   x-ref="pstart" value="{{ p10_start }}">
+                        </div>
+                        <div class="col">
+                            <label class="form-label">Конец периода</label>
+                            <input type="date" name="period_end" class="form-control" required
+                                   x-ref="pend" value="{{ p10_end }}">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-calculator"></i> Сформировать
+                    </button>
+                    <a href="/payroll" class="btn btn-secondary ms-2">Отмена</a>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-5">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">Правила расчёта ЗП</h6>
+                <table class="table table-sm small mb-0">
+                    <tr><td class="text-muted">Базовая</td><td>Ставка за смену или почасовая &times; часы</td></tr>
+                    <tr><td class="text-muted">Мотивация</td><td>Из Google Sheets (приёмка)</td></tr>
+                    <tr><td class="text-muted">Бонус выдача</td><td>Каждые 100 выдач &rarr; +100 ₽</td></tr>
+                    <tr><td class="text-muted">Удержания</td><td>Не оспоренные товары</td></tr>
+                    <tr><td class="text-muted">Корректировки</td><td>Ручные премии/удержания</td></tr>
+                    <tr class="table-warning"><td class="text-muted">Бонус мен. (10-е)</td><td>Тип 1: 10000₽, Тип 2: 5000₽, Тип 3: тикеты&times;200₽</td></tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Расчётные ведомости — PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">Расчётные ведомости</h4>
+    <a href="/payroll/generate" class="btn btn-primary">
+        <i class="bi bi-calculator"></i> Сформировать
+    </a>
+</div>
+
+{% if runs %}
+<div class="table-container">
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Период</th>
+                <th>День выплаты</th>
+                <th>Сформирован</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr>
+                <td>{{ run.id }}</td>
+                <td>{{ run.period_start.strftime('%d.%m.%Y') }} — {{ run.period_end.strftime('%d.%m.%Y') }}</td>
+                <td>{{ run.payout_day }}-е число</td>
+                <td>{{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}</td>
+                <td class="text-end">
+                    <a href="/payroll/{{ run.id }}" class="btn btn-sm btn-outline-primary">Открыть</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-muted text-center py-5">Нет сформированных ведомостей</div>
+{% endif %}
+{% endblock %}

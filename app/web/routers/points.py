@@ -49,9 +49,7 @@ async def list_points(
     mp_result = await db.execute(select(Marketplace).where(Marketplace.is_active == True))
     marketplaces = mp_result.scalars().all()
 
-    return templates.TemplateResponse("points/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "points/list.html", {"current_user": current_user,
         "active_page": "points",
         "items": points,
         "total": total,
@@ -60,8 +58,7 @@ async def list_points(
         "search": search,
         "brand": brand,
         "status": status,
-        "marketplaces": marketplaces,
-    })
+        "marketplaces": marketplaces})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -72,14 +69,11 @@ async def new_point(
 ):
     mp_result = await db.execute(select(Marketplace).where(Marketplace.is_active == True))
     marketplaces = mp_result.scalars().all()
-    return templates.TemplateResponse("points/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "points/form.html", {"current_user": current_user,
         "active_page": "points",
         "item": None,
         "marketplaces": marketplaces,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")
@@ -126,13 +120,10 @@ async def point_detail(
     mp_result = await db.execute(select(Marketplace).where(Marketplace.is_active == True))
     marketplaces = mp_result.scalars().all()
 
-    return templates.TemplateResponse("points/detail.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "points/detail.html", {"current_user": current_user,
         "active_page": "points",
         "item": point,
-        "marketplaces": marketplaces,
-    })
+        "marketplaces": marketplaces})
 
 
 @router.get("/{point_id}/edit", response_class=HTMLResponse)
@@ -150,14 +141,11 @@ async def edit_point(
     mp_result = await db.execute(select(Marketplace).where(Marketplace.is_active == True))
     marketplaces = mp_result.scalars().all()
 
-    return templates.TemplateResponse("points/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "points/form.html", {"current_user": current_user,
         "active_page": "points",
         "item": point,
         "marketplaces": marketplaces,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/{point_id}/edit")

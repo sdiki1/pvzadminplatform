@@ -63,9 +63,7 @@ async def list_supplies(
     points = points_result.scalars().all()
     points_map = {p.id: p for p in points}
 
-    return templates.TemplateResponse("supplies/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "supplies/list.html", {"current_user": current_user,
         "active_page": "supplies",
         "items": items,
         "total": total,
@@ -75,8 +73,7 @@ async def list_supplies(
         "points_map": points_map,
         "point_id": point_id,
         "status": status,
-        "statuses": REQUEST_STATUSES,
-    })
+        "statuses": REQUEST_STATUSES})
 
 
 @router.get("/catalog", response_class=HTMLResponse)
@@ -88,12 +85,9 @@ async def supply_catalog(
     result = await db.execute(select(SupplyItem).order_by(SupplyItem.category, SupplyItem.name))
     items = result.scalars().all()
 
-    return templates.TemplateResponse("supplies/catalog.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "supplies/catalog.html", {"current_user": current_user,
         "active_page": "supplies",
-        "items": items,
-    })
+        "items": items})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -108,16 +102,13 @@ async def new_supply_request(
     items_result = await db.execute(select(SupplyItem).where(SupplyItem.is_active == True).order_by(SupplyItem.category, SupplyItem.name))
     supply_items = items_result.scalars().all()
 
-    return templates.TemplateResponse("supplies/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "supplies/form.html", {"current_user": current_user,
         "active_page": "supplies",
         "item": None,
         "points": points,
         "supply_items": supply_items,
         "statuses": REQUEST_STATUSES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")
@@ -182,13 +173,10 @@ async def supply_detail(
     points_result = await db.execute(select(Point))
     points_map = {p.id: p for p in points_result.scalars().all()}
 
-    return templates.TemplateResponse("supplies/detail.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "supplies/detail.html", {"current_user": current_user,
         "active_page": "supplies",
         "item": header,
         "line_items": line_items,
         "supply_items_map": supply_items_map,
         "points_map": points_map,
-        "statuses": REQUEST_STATUSES,
-    })
+        "statuses": REQUEST_STATUSES})

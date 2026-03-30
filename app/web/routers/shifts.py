@@ -56,9 +56,7 @@ async def list_shifts(
     users_result = await db.execute(select(User))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
-    return templates.TemplateResponse("shifts/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "shifts/list.html", {"current_user": current_user,
         "active_page": "shifts",
         "items": shifts,
         "total": total,
@@ -70,8 +68,7 @@ async def list_shifts(
         "point_id": point_id,
         "employee_id": employee_id,
         "date_from": date_from,
-        "date_to": date_to,
-    })
+        "date_to": date_to})
 
 
 @router.get("/calendar", response_class=HTMLResponse)
@@ -83,12 +80,9 @@ async def shift_calendar(
     points_result = await db.execute(select(Point).where(Point.is_active == True))
     points = points_result.scalars().all()
 
-    return templates.TemplateResponse("shifts/calendar.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "shifts/calendar.html", {"current_user": current_user,
         "active_page": "shifts",
-        "points": points,
-    })
+        "points": points})
 
 
 @router.get("/api/events")

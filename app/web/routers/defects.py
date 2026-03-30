@@ -95,9 +95,7 @@ async def list_defects(
     points = points_result.scalars().all()
     points_map = {p.id: p for p in points}
 
-    return templates.TemplateResponse("defects/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "defects/list.html", {"current_user": current_user,
         "active_page": "defects",
         "items": items,
         "total": total,
@@ -112,8 +110,7 @@ async def list_defects(
         "date_to": date_to,
         "search": search,
         "incident_types": INCIDENT_TYPES,
-        "statuses": STATUSES,
-    })
+        "statuses": STATUSES})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -128,9 +125,7 @@ async def new_defect(
     employees_result = await db.execute(select(User).where(User.is_active == True))
     employees = employees_result.scalars().all()
 
-    return templates.TemplateResponse("defects/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "defects/form.html", {"current_user": current_user,
         "active_page": "defects",
         "item": None,
         "points": points,
@@ -139,8 +134,7 @@ async def new_defect(
         "detected_by": DETECTED_BY,
         "detected_stages": DETECTED_STAGES,
         "statuses": STATUSES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")
@@ -198,9 +192,7 @@ async def defect_detail(
     users_result = await db.execute(select(User))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
-    return templates.TemplateResponse("defects/detail.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "defects/detail.html", {"current_user": current_user,
         "active_page": "defects",
         "item": item,
         "points_map": points_map,
@@ -208,8 +200,7 @@ async def defect_detail(
         "incident_types": INCIDENT_TYPES,
         "detected_by": DETECTED_BY,
         "detected_stages": DETECTED_STAGES,
-        "statuses": STATUSES,
-    })
+        "statuses": STATUSES})
 
 
 @router.get("/{defect_id}/edit", response_class=HTMLResponse)
@@ -230,9 +221,7 @@ async def edit_defect(
     employees_result = await db.execute(select(User).where(User.is_active == True))
     employees = employees_result.scalars().all()
 
-    return templates.TemplateResponse("defects/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "defects/form.html", {"current_user": current_user,
         "active_page": "defects",
         "item": item,
         "points": points,
@@ -241,8 +230,7 @@ async def edit_defect(
         "detected_by": DETECTED_BY,
         "detected_stages": DETECTED_STAGES,
         "statuses": STATUSES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/{defect_id}/edit")

@@ -7,16 +7,14 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.models import WebUser
 from app.db.session import SessionLocal
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -25,11 +23,11 @@ router = APIRouter(tags=["auth"])
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -54,7 +52,7 @@ async def authenticate_user(session: AsyncSession, login: str, password: str) ->
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("auth/login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(request, "auth/login.html", {"error": None})
 
 
 @router.post("/login")
@@ -68,8 +66,8 @@ async def login_submit(request: Request):
 
     if not user:
         return templates.TemplateResponse(
-            "auth/login.html",
-            {"request": request, "error": "Неверный логин или пароль"},
+            request, "auth/login.html",
+            {"error": "Неверный логин или пароль"},
             status_code=401,
         )
 

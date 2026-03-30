@@ -1,60 +1,228 @@
 {% extends "base.html" %}
-{% block title %}{{ item.full_name }} - PVZ Admin{% endblock %}
+{% block title %}{{ item.full_name }} — PVZ Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>{{ item.full_name }}</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">{{ item.full_name }}</h4>
     <div>
         <a href="/employees/{{ item.id }}/edit" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Редактировать</a>
         <a href="/employees" class="btn btn-outline-secondary btn-sm">Назад</a>
     </div>
 </div>
 
-<div class="row g-3">
+<div class="row mb-4">
     <div class="col-md-6">
-        <div class="form-card">
-            <h6 class="mb-3">Информация</h6>
-            <table class="table table-sm table-borderless">
-                <tr><td class="text-muted" style="width:40%">ID</td><td>{{ item.id }}</td></tr>
-                <tr><td class="text-muted">ФИО</td><td>{{ item.full_name }}</td></tr>
-                <tr><td class="text-muted">Фамилия</td><td>{{ item.last_name or '-' }}</td></tr>
-                <tr><td class="text-muted">Телефон</td><td>{{ item.phone or '-' }}</td></tr>
-                <tr><td class="text-muted">Telegram ID</td><td>{{ item.telegram_id }}</td></tr>
-                <tr><td class="text-muted">Роль</td><td>{{ item.role.value if item.role.value is defined else item.role }}</td></tr>
-                <tr><td class="text-muted">Статус</td><td>{% if item.is_active %}<span class="badge bg-success">Активен</span>{% else %}<span class="badge bg-secondary">Неактивен</span>{% endif %}</td></tr>
-            </table>
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">Информация</h6>
+                <table class="table table-sm mb-0">
+                    <tr><td class="text-muted" style="width:40%">ID</td><td>{{ item.id }}</td></tr>
+                    <tr><td class="text-muted">Telegram ID</td><td>{{ item.telegram_id }}</td></tr>
+                    <tr><td class="text-muted">Роль</td><td>{{ item.role.value if item.role else '—' }}</td></tr>
+                    <tr><td class="text-muted">Телефон</td><td>{{ item.phone or '—' }}</td></tr>
+                    <tr>
+                        <td class="text-muted">Статус</td>
+                        <td>
+                            {% if item.is_active %}
+                            <span class="badge bg-success">Активен</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Неактивен</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr><td class="text-muted">Тип бонуса мен.</td><td>{{ item.manager_bonus_type or '—' }}</td></tr>
+                </table>
+            </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="form-card">
-            <h6 class="mb-3">Алиасы (короткие имена)</h6>
-            {% for alias in aliases %}
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <span>{{ alias.alias_text }} <small class="text-muted">({{ alias.alias_type }})</small></span>
-            </div>
-            {% else %}
-            <p class="text-muted small">Нет алиасов</p>
-            {% endfor %}
-
-            <hr>
-            <form method="post" action="/employees/{{ item.id }}/aliases" class="row g-2">
-                <div class="col">
-                    <input type="text" class="form-control form-control-sm" name="alias_text" placeholder="Новый алиас" required>
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">Псевдонимы</h6>
+                {% for alias in aliases %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>{{ alias.alias_text }} <small class="text-muted">({{ alias.alias_type }})</small></span>
                 </div>
-                <div class="col-auto">
-                    <select class="form-select form-select-sm" name="alias_type">
-                        <option value="short_name">Короткое имя</option>
-                        <option value="surname">Фамилия</option>
-                        <option value="full_name">ФИО</option>
-                        <option value="initials">Инициалы</option>
-                        <option value="typo">Опечатка</option>
+                {% else %}
+                <p class="text-muted small mb-2">Нет псевдонимов</p>
+                {% endfor %}
+                <hr>
+                <form method="post" action="/employees/{{ item.id }}/aliases" class="row g-2">
+                    <div class="col">
+                        <input type="text" class="form-control form-control-sm" name="alias_text" placeholder="Новый псевдоним" required>
+                    </div>
+                    <div class="col-auto">
+                        <select class="form-select form-select-sm" name="alias_type">
+                            <option value="short_name">Короткое имя</option>
+                            <option value="surname">Фамилия</option>
+                            <option value="full_name">ФИО</option>
+                        </select>
+                    </div>
+                    <div class="col-auto">
+                        <button type="submit" class="btn btn-sm btn-outline-primary">+</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assignments: points + rates -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h6 class="card-title">Назначения на точки и ставки</h6>
+        {% if assignments %}
+        <table class="table table-sm mb-3">
+            <thead>
+                <tr>
+                    <th>Точка</th>
+                    <th class="text-end">Ставка/смена</th>
+                    <th class="text-end">Почасовая</th>
+                    <th>Основная</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in assignments %}
+                {% set point = points_map.get(a.point_id) %}
+                <tr>
+                    <td>{{ point.name if point else 'ID ' ~ a.point_id }}</td>
+                    <td class="text-end">{{ "%.2f"|format(a.shift_rate_rub|float) if a.shift_rate_rub else '—' }} ₽</td>
+                    <td class="text-end">{{ "%.2f"|format(a.hourly_rate_rub|float) if a.hourly_rate_rub else '—' }} ₽/ч</td>
+                    <td>{% if a.is_primary %}<span class="badge bg-primary">Да</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-3">Не назначен ни на одну точку</p>
+        {% endif %}
+
+        <details>
+            <summary class="text-primary small" style="cursor:pointer">Добавить / изменить назначение</summary>
+            <form method="POST" action="/employees/{{ item.id }}/assign" class="d-flex gap-2 flex-wrap align-items-end mt-2">
+                <div>
+                    <label class="form-label small mb-0">Точка</label>
+                    <select name="point_id" class="form-select form-select-sm" required>
+                        <option value="">—</option>
+                        {% for p in points_map.values()|sort(attribute='name') %}
+                        {% if p.is_active %}
+                        <option value="{{ p.id }}">{{ p.name }}</option>
+                        {% endif %}
+                        {% endfor %}
                     </select>
                 </div>
-                <div class="col-auto">
-                    <button type="submit" class="btn btn-sm btn-outline-primary">Добавить</button>
+                <div>
+                    <label class="form-label small mb-0">Ставка/смена (₽)</label>
+                    <input type="number" name="shift_rate_rub" class="form-control form-control-sm" step="0.01" style="width:120px">
                 </div>
+                <div>
+                    <label class="form-label small mb-0">Почасовая (₽)</label>
+                    <input type="number" name="hourly_rate_rub" class="form-control form-control-sm" step="0.01" style="width:120px">
+                </div>
+                <div class="form-check mt-2">
+                    <input type="checkbox" name="is_primary" class="form-check-input" id="isPrimary">
+                    <label class="form-check-label small" for="isPrimary">Основная</label>
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary">Назначить</button>
             </form>
+        </details>
+    </div>
+</div>
+
+<!-- Recent shifts -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h6 class="card-title">Последние смены (до 20)</h6>
+        {% if recent_shifts %}
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>Точка</th>
+                        <th>Открыта</th>
+                        <th>Закрыта</th>
+                        <th>Часы</th>
+                        <th>Гео (откр)</th>
+                        <th>Статус</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in recent_shifts %}
+                    {% set point = points_map.get(s.point_id) %}
+                    <tr>
+                        <td>{{ s.shift_date.strftime('%d.%m.%Y') }}</td>
+                        <td>{{ point.name if point else '—' }}</td>
+                        <td>{{ s.opened_at.strftime('%H:%M') if s.opened_at else '—' }}</td>
+                        <td>{{ s.closed_at.strftime('%H:%M') if s.closed_at else '—' }}</td>
+                        <td>{{ "%.1f"|format((s.duration_minutes or 0) / 60) }}</td>
+                        <td>
+                            {% if s.open_distance_m is not none %}
+                            {{ "%.0f"|format(s.open_distance_m) }}м
+                            {% if s.open_geo_status and s.open_geo_status.value == 'outside' %}
+                            <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+                            {% endif %}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td>
+                            {% if s.state.value == 'open' %}
+                            <span class="badge bg-info">Открыта</span>
+                            {% else %}
+                            <span class="badge bg-success">Закрыта</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
+        {% else %}
+        <p class="text-muted mb-0">Нет смен</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Payroll history -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h6 class="card-title">История начислений</h6>
+        {% if payroll_items %}
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th>Период</th>
+                    <th class="text-center">Смены</th>
+                    <th class="text-end">База</th>
+                    <th class="text-end">Мотивация</th>
+                    <th class="text-end fw-bold">Итого</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pi in payroll_items %}
+                {% set run = runs_map.get(pi.run_id) %}
+                <tr>
+                    <td>
+                        {% if run %}{{ run.period_start.strftime('%d.%m') }} — {{ run.period_end.strftime('%d.%m.%Y') }}{% else %}—{% endif %}
+                    </td>
+                    <td class="text-center">{{ pi.shifts_count }}</td>
+                    <td class="text-end">{{ "%.2f"|format(pi.base_amount_rub|float) }}</td>
+                    <td class="text-end">{{ "%.2f"|format(pi.motivation_amount_rub|float) }}</td>
+                    <td class="text-end fw-bold">{{ "%.2f"|format(pi.total_amount_rub|float) }} ₽</td>
+                    <td>
+                        {% if run %}
+                        <a href="/payroll/{{ run.id }}/sheet/{{ pi.id }}" class="btn btn-sm btn-outline-primary" title="Расчётный лист">
+                            <i class="bi bi-file-text"></i>
+                        </a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0">Нет начислений</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

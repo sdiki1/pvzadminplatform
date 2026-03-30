@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Главная - PVZ Admin{% endblock %}
+{% block title %}Главная — PVZ Admin{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>Главная</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">Главная</h4>
     <span class="text-muted">{{ today.strftime('%d.%m.%Y') }}</span>
 </div>
 
@@ -16,6 +16,14 @@
         </div>
     </div>
     <div class="col-6 col-md-4 col-xl-3">
+        <a href="/geofence" class="text-decoration-none">
+            <div class="stat-card">
+                <div class="stat-value text-warning">{{ pending_geo }}</div>
+                <div class="stat-label">Ожидают гео-решения</div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
         <div class="stat-card">
             <div class="stat-value text-danger">{{ open_sos }}</div>
             <div class="stat-label">Открытых SOS</div>
@@ -23,13 +31,13 @@
     </div>
     <div class="col-6 col-md-4 col-xl-3">
         <div class="stat-card">
-            <div class="stat-value text-warning">{{ new_defects }}</div>
+            <div class="stat-value text-info">{{ new_defects }}</div>
             <div class="stat-label">Новый брак</div>
         </div>
     </div>
     <div class="col-6 col-md-4 col-xl-3">
         <div class="stat-card">
-            <div class="stat-value text-info">{{ open_appeals }}</div>
+            <div class="stat-value">{{ open_appeals }}</div>
             <div class="stat-label">Оспаривания</div>
         </div>
     </div>
@@ -53,6 +61,39 @@
     </div>
 </div>
 
+<!-- Confirmation + Payroll row -->
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">Подтверждения на {{ tomorrow.strftime('%d.%m.%Y') }}</h6>
+                <div class="d-flex gap-3">
+                    <div><span class="badge bg-success fs-6">{{ confirmed_yes }}</span> выйдут</div>
+                    <div><span class="badge bg-danger fs-6">{{ confirmed_no }}</span> не выйдут</div>
+                    <div><span class="badge bg-secondary fs-6">{{ unconfirmed }}</span> не ответили</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-title">Последняя ведомость</h6>
+                {% if latest_run %}
+                <p class="mb-1">
+                    {{ latest_run.period_start.strftime('%d.%m') }} — {{ latest_run.period_end.strftime('%d.%m.%Y') }}
+                    (выплата {{ latest_run.payout_day }}-го)
+                </p>
+                <a href="/payroll/{{ latest_run.id }}" class="btn btn-sm btn-outline-primary">Открыть</a>
+                {% else %}
+                <p class="text-muted mb-1">Ведомости ещё не формировались</p>
+                <a href="/payroll/generate" class="btn btn-sm btn-primary">Сформировать</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row g-3">
     <!-- Recent SOS -->
     <div class="col-md-6">
@@ -61,22 +102,17 @@
                 <h6 class="mb-0">Последние SOS</h6>
                 <a href="/sos" class="btn btn-sm btn-outline-primary">Все</a>
             </div>
-            <table class="table table-sm">
+            <table class="table table-sm mb-0">
                 <thead>
-                    <tr>
-                        <th>Дата</th>
-                        <th>Точка</th>
-                        <th>Описание</th>
-                        <th>Статус</th>
-                    </tr>
+                    <tr><th>Дата</th><th>Точка</th><th>Описание</th><th>Статус</th></tr>
                 </thead>
                 <tbody>
                     {% for item in recent_sos %}
                     <tr>
-                        <td>{{ item.incident_date.strftime('%d.%m') }}</td>
-                        <td>{{ points_map.get(item.point_id, '')|attr('name') if points_map.get(item.point_id) else '-' }}</td>
-                        <td class="text-truncate" style="max-width: 200px;">{{ item.description[:50] }}{% if item.description|length > 50 %}...{% endif %}</td>
-                        <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                        <td>{{ item.incident_date.strftime('%d.%m') if item.incident_date else '—' }}</td>
+                        <td>{{ points_map[item.point_id].name if points_map.get(item.point_id) else '—' }}</td>
+                        <td class="text-truncate" style="max-width:200px">{{ (item.description or '')[:50] }}</td>
+                        <td><span class="badge bg-{{ 'danger' if item.status == 'open' else 'success' }}">{{ item.status }}</span></td>
                     </tr>
                     {% else %}
                     <tr><td colspan="4" class="text-muted text-center py-3">Нет записей</td></tr>
@@ -93,22 +129,17 @@
                 <h6 class="mb-0">Последний брак</h6>
                 <a href="/defects" class="btn btn-sm btn-outline-primary">Все</a>
             </div>
-            <table class="table table-sm">
+            <table class="table table-sm mb-0">
                 <thead>
-                    <tr>
-                        <th>Дата</th>
-                        <th>Точка</th>
-                        <th>Тип</th>
-                        <th>Статус</th>
-                    </tr>
+                    <tr><th>Дата</th><th>Точка</th><th>Тип</th><th>Статус</th></tr>
                 </thead>
                 <tbody>
                     {% for item in recent_defects %}
                     <tr>
-                        <td>{{ item.incident_date.strftime('%d.%m') }}</td>
-                        <td>{{ points_map.get(item.point_id, '')|attr('name') if points_map.get(item.point_id) else '-' }}</td>
+                        <td>{{ item.incident_date.strftime('%d.%m') if item.incident_date else '—' }}</td>
+                        <td>{{ points_map[item.point_id].name if points_map.get(item.point_id) else '—' }}</td>
                         <td>{{ item.incident_type }}</td>
-                        <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                        <td><span class="badge bg-{{ 'warning' if item.status == 'new' else 'secondary' }}">{{ item.status }}</span></td>
                     </tr>
                     {% else %}
                     <tr><td colspan="4" class="text-muted text-center py-3">Нет записей</td></tr>

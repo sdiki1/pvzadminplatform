@@ -79,9 +79,7 @@ async def list_appeals(
     users_result = await db.execute(select(User))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
-    return templates.TemplateResponse("appeals/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "appeals/list.html", {"current_user": current_user,
         "active_page": "appeals",
         "items": items,
         "total": total,
@@ -97,8 +95,7 @@ async def list_appeals(
         "date_to": date_to,
         "search": search,
         "appeal_types": APPEAL_TYPES,
-        "statuses": APPEAL_STATUSES,
-    })
+        "statuses": APPEAL_STATUSES})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -113,17 +110,14 @@ async def new_appeal(
     employees_result = await db.execute(select(User).where(User.is_active == True))
     employees = employees_result.scalars().all()
 
-    return templates.TemplateResponse("appeals/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "appeals/form.html", {"current_user": current_user,
         "active_page": "appeals",
         "item": None,
         "points": points,
         "employees": employees,
         "appeal_types": APPEAL_TYPES,
         "statuses": APPEAL_STATUSES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")
@@ -186,17 +180,14 @@ async def appeal_detail(
     users_result = await db.execute(select(User))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
-    return templates.TemplateResponse("appeals/detail.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "appeals/detail.html", {"current_user": current_user,
         "active_page": "appeals",
         "item": item,
         "feedbacks": feedbacks,
         "points_map": points_map,
         "users_map": users_map,
         "appeal_types": APPEAL_TYPES,
-        "statuses": APPEAL_STATUSES,
-    })
+        "statuses": APPEAL_STATUSES})
 
 
 @router.post("/{appeal_id}/feedback")

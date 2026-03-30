@@ -51,9 +51,7 @@ async def list_audit(
     users_result = await db.execute(select(WebUser))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
-    return templates.TemplateResponse("audit/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "audit/list.html", {"current_user": current_user,
         "active_page": "audit",
         "items": items,
         "total": total,
@@ -63,5 +61,4 @@ async def list_audit(
         "entity_type": entity_type,
         "action_type": action_type,
         "date_from": date_from,
-        "date_to": date_to,
-    })
+        "date_to": date_to})

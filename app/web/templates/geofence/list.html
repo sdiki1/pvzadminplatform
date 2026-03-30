@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Исключения геозоны — PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0">Исключения геозоны</h4>
+</div>
+
+<div class="filters-bar mb-3">
+    <form method="GET" class="d-flex gap-2">
+        <select name="status" class="form-select form-select-sm" style="width:auto;">
+            <option value="pending" {% if status == 'pending' %}selected{% endif %}>Ожидают решения</option>
+            <option value="approved" {% if status == 'approved' %}selected{% endif %}>Одобрены</option>
+            <option value="rejected" {% if status == 'rejected' %}selected{% endif %}>Отклонены</option>
+            <option value="" {% if not status %}selected{% endif %}>Все</option>
+        </select>
+        <button type="submit" class="btn btn-sm btn-outline-primary">Фильтр</button>
+    </form>
+</div>
+
+{% if items %}
+<div class="table-container">
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Сотрудник</th>
+                <th>Точка</th>
+                <th>Событие</th>
+                <th>Расстояние</th>
+                <th>Дата смены</th>
+                <th>Статус</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            {% set shift = shifts_map.get(item.shift_id) %}
+            {% set user = users_map.get(shift.user_id) if shift else None %}
+            {% set point = points_map.get(shift.point_id) if shift else None %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ user.full_name if user else '—' }}</td>
+                <td>{{ point.name if point else '—' }}</td>
+                <td>
+                    {% if item.event == 'open' %}
+                    <span class="badge bg-info">Открытие</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">Закрытие</span>
+                    {% endif %}
+                </td>
+                <td>{{ "%.0f"|format(item.distance_m) }} м</td>
+                <td>{{ shift.shift_date.strftime('%d.%m.%Y') if shift else '—' }}</td>
+                <td>
+                    {% if item.status.value == 'pending' %}
+                    <span class="badge bg-warning text-dark">Ожидает</span>
+                    {% elif item.status.value == 'approved' %}
+                    <span class="badge bg-success">Одобрено</span>
+                    {% else %}
+                    <span class="badge bg-danger">Отклонено</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">
+                    {% if item.status.value == 'pending' %}
+                    <form method="POST" action="/geofence/{{ item.id }}/approve" class="d-inline">
+                        <button type="submit" class="btn btn-sm btn-success" title="Одобрить">
+                            <i class="bi bi-check-lg"></i>
+                        </button>
+                    </form>
+                    <form method="POST" action="/geofence/{{ item.id }}/reject" class="d-inline ms-1">
+                        <button type="submit" class="btn btn-sm btn-danger" title="Отклонить">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="text-muted text-center py-5">Нет исключений с выбранным статусом</div>
+{% endif %}
+{% endblock %}

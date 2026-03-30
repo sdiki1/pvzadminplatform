@@ -39,7 +39,7 @@ async def main() -> None:
             login=login,
             password_hash=hash_password(password),
             full_name=full_name,
-            role=WebRoleEnum.superadmin,
+            role=WebRoleEnum.SUPERADMIN,
             is_active=True,
         )
         session.add(user)

@@ -48,9 +48,7 @@ async def list_surveys(
     items = result.scalars().all()
     total_pages = max(1, (total + per_page - 1) // per_page)
 
-    return templates.TemplateResponse("marketing/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "marketing/list.html", {"current_user": current_user,
         "active_page": "marketing",
         "items": items,
         "total": total,
@@ -58,8 +56,7 @@ async def list_surveys(
         "total_pages": total_pages,
         "search": search,
         "date_from": date_from,
-        "date_to": date_to,
-    })
+        "date_to": date_to})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -67,13 +64,10 @@ async def new_survey(
     request: Request,
     current_user: WebUser = Depends(get_current_user),
 ):
-    return templates.TemplateResponse("marketing/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "marketing/form.html", {"current_user": current_user,
         "active_page": "marketing",
         "item": None,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")

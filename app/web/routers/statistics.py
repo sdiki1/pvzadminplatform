@@ -72,9 +72,7 @@ async def list_statistics(
     metric_defs = defs_result.scalars().all()
     defs_map = {d.id: d for d in metric_defs}
 
-    return templates.TemplateResponse("statistics/index.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "statistics/index.html", {"current_user": current_user,
         "active_page": "statistics",
         "items": reports,
         "total": total,
@@ -87,8 +85,7 @@ async def list_statistics(
         "defs_map": defs_map,
         "point_id": point_id,
         "date_from": date_from,
-        "date_to": date_to,
-    })
+        "date_to": date_to})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -105,15 +102,12 @@ async def new_report(
     )
     metric_defs = defs_result.scalars().all()
 
-    return templates.TemplateResponse("statistics/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "statistics/form.html", {"current_user": current_user,
         "active_page": "statistics",
         "item": None,
         "points": points,
         "metric_defs": metric_defs,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")

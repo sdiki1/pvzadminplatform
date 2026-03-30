@@ -51,6 +51,9 @@ def create_app() -> FastAPI:
     from app.web.routers.reports import router as reports_router
     from app.web.routers.users import router as users_router
     from app.web.routers.audit import router as audit_router
+    from app.web.routers.payroll import router as payroll_router
+    from app.web.routers.adjustments import router as adjustments_router
+    from app.web.routers.geofence import router as geofence_router
 
     app.include_router(dashboard_router)
     app.include_router(points_router)
@@ -66,6 +69,9 @@ def create_app() -> FastAPI:
     app.include_router(reports_router)
     app.include_router(users_router)
     app.include_router(audit_router)
+    app.include_router(payroll_router)
+    app.include_router(adjustments_router)
+    app.include_router(geofence_router)
 
     @app.exception_handler(401)
     async def unauthorized_handler(request: Request, exc):

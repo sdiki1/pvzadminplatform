@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Расчётный лист — {{ employee.full_name if employee else '' }} — PVZ Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+    .payslip { max-width: 700px; margin: 0 auto; }
+    .payslip-header { border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 16px; }
+    .payslip-table td { padding: 8px 12px; }
+    .payslip-table .label { color: #666; }
+    .payslip-table .amount { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+    .payslip-total { border-top: 2px solid #333; font-size: 1.15em; font-weight: 700; }
+    @media print {
+        .sidebar, .main-header, .no-print { display: none !important; }
+        .main-content { margin-left: 0 !important; padding: 0 !important; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 no-print">
+    <a href="/payroll/{{ run.id }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> К ведомости
+    </a>
+    <button onclick="window.print()" class="btn btn-outline-primary">
+        <i class="bi bi-printer"></i> Печать
+    </button>
+</div>
+
+<div class="payslip">
+    <div class="payslip-header">
+        <h4>Расчётный лист</h4>
+        <p class="text-muted mb-1">
+            <strong>{{ employee.full_name if employee else 'Сотрудник #' ~ item.user_id }}</strong>
+        </p>
+        <p class="text-muted mb-0">
+            Период: {{ run.period_start.strftime('%d.%m.%Y') }} — {{ run.period_end.strftime('%d.%m.%Y') }}
+            &middot; Выплата {{ run.payout_day }}-го числа
+        </p>
+    </div>
+
+    <table class="table payslip-table">
+        <tbody>
+            <tr>
+                <td class="label">Количество смен</td>
+                <td class="amount">{{ item.shifts_count }}</td>
+            </tr>
+            <tr>
+                <td class="label">Отработано часов</td>
+                <td class="amount">{{ "%.1f"|format(item.hours_total|float) }}</td>
+            </tr>
+            <tr>
+                <td colspan="2"><hr class="my-1"></td>
+            </tr>
+            <tr>
+                <td class="label">Оклад (базовая часть)</td>
+                <td class="amount">{{ "%.2f"|format(item.base_amount_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Мотивирующие начисления</td>
+                <td class="amount">{{ "%.2f"|format(item.motivation_amount_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Премия за выдачу</td>
+                <td class="amount">{{ "%.2f"|format(item.issued_bonus_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Удержания по товарам (не оспорено)</td>
+                <td class="amount text-danger">−{{ "%.2f"|format(item.dispute_deduction_rub|float) }} ₽</td>
+            </tr>
+            {% if item.manager_bonus_rub and item.manager_bonus_rub|float > 0 %}
+            <tr>
+                <td class="label">
+                    Доп. выплаты менеджера
+                    {% if run.payout_day == 10 %}
+                    <br><small class="text-muted">
+                        {% if employee and employee.manager_bonus_type == 1 %}(управление пунктами)
+                        {% elif employee and employee.manager_bonus_type == 2 %}(инвентаризации)
+                        {% elif employee and employee.manager_bonus_type == 3 %}(тикеты оспаривания &times; 200₽)
+                        {% endif %}
+                    </small>
+                    {% endif %}
+                </td>
+                <td class="amount">{{ "%.2f"|format(item.manager_bonus_rub|float) }} ₽</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td class="label">Доп. выплаты менеджера</td>
+                <td class="amount">0.00 ₽</td>
+            </tr>
+            {% endif %}
+            <tr>
+                <td class="label">Премия / удержание руководства</td>
+                <td class="amount">{{ "%.2f"|format(item.adjustments_rub|float) }} ₽</td>
+            </tr>
+            <tr class="payslip-total">
+                <td>ИТОГО К ВЫПЛАТЕ</td>
+                <td class="amount">{{ "%.2f"|format(item.total_amount_rub|float) }} ₽</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <p class="text-muted small mt-4">
+        Сформировано: {{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}
+    </p>
+</div>
+{% endblock %}

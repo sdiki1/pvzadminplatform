@@ -52,9 +52,7 @@ async def list_users(
     users = result.scalars().all()
     total_pages = max(1, (total + per_page - 1) // per_page)
 
-    return templates.TemplateResponse("users/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "users/list.html", {"current_user": current_user,
         "active_page": "users",
         "items": users,
         "total": total,
@@ -62,8 +60,7 @@ async def list_users(
         "total_pages": total_pages,
         "search": search,
         "role": role,
-        "web_roles": WEB_ROLES,
-    })
+        "web_roles": WEB_ROLES})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -71,14 +68,11 @@ async def new_user(
     request: Request,
     current_user: WebUser = Depends(require_admin),
 ):
-    return templates.TemplateResponse("users/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "users/form.html", {"current_user": current_user,
         "active_page": "users",
         "item": None,
         "web_roles": WEB_ROLES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")
@@ -92,26 +86,20 @@ async def create_user(
     password = form.get("password", "")
 
     if not login or not password:
-        return templates.TemplateResponse("users/form.html", {
-            "request": request,
-            "current_user": current_user,
+        return templates.TemplateResponse(request, "users/form.html", {"current_user": current_user,
             "active_page": "users",
             "item": None,
             "web_roles": WEB_ROLES,
-            "error": "Логин и пароль обязательны",
-        })
+            "error": "Логин и пароль обязательны"})
 
     # Check if login already exists
     existing = await db.execute(select(WebUser).where(WebUser.login == login))
     if existing.scalar_one_or_none():
-        return templates.TemplateResponse("users/form.html", {
-            "request": request,
-            "current_user": current_user,
+        return templates.TemplateResponse(request, "users/form.html", {"current_user": current_user,
             "active_page": "users",
             "item": None,
             "web_roles": WEB_ROLES,
-            "error": "Пользователь с таким логином уже существует",
-        })
+            "error": "Пользователь с таким логином уже существует"})
 
     user = WebUser(
         login=login,
@@ -139,14 +127,11 @@ async def edit_user(
     if not user:
         return RedirectResponse(url="/users", status_code=302)
 
-    return templates.TemplateResponse("users/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "users/form.html", {"current_user": current_user,
         "active_page": "users",
         "item": user,
         "web_roles": WEB_ROLES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/{user_id}/edit")

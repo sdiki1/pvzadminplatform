@@ -85,9 +85,7 @@ async def reports_index(
     )).all():
         defect_by_type[row[0]] = row[1]
 
-    return templates.TemplateResponse("reports/index.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "reports/index.html", {"current_user": current_user,
         "active_page": "reports",
         "points": points,
         "point_id": point_id,
@@ -100,5 +98,4 @@ async def reports_index(
         "deliveries_total": deliveries_total,
         "appealed": appealed,
         "not_appealed": not_appealed,
-        "defect_by_type": defect_by_type,
-    })
+        "defect_by_type": defect_by_type})

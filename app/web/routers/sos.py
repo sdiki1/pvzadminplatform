@@ -65,9 +65,7 @@ async def list_sos(
     points = points_result.scalars().all()
     points_map = {p.id: p for p in points}
 
-    return templates.TemplateResponse("sos/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "sos/list.html", {"current_user": current_user,
         "active_page": "sos",
         "items": items,
         "total": total,
@@ -80,8 +78,7 @@ async def list_sos(
         "date_from": date_from,
         "date_to": date_to,
         "search": search,
-        "statuses": SOS_STATUSES,
-    })
+        "statuses": SOS_STATUSES})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -96,16 +93,13 @@ async def new_sos(
     employees_result = await db.execute(select(User).where(User.is_active == True))
     employees = employees_result.scalars().all()
 
-    return templates.TemplateResponse("sos/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "sos/form.html", {"current_user": current_user,
         "active_page": "sos",
         "item": None,
         "points": points,
         "employees": employees,
         "statuses": SOS_STATUSES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")
@@ -160,15 +154,12 @@ async def sos_detail(
     users_result = await db.execute(select(User))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
-    return templates.TemplateResponse("sos/detail.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "sos/detail.html", {"current_user": current_user,
         "active_page": "sos",
         "item": item,
         "points_map": points_map,
         "users_map": users_map,
-        "statuses": SOS_STATUSES,
-    })
+        "statuses": SOS_STATUSES})
 
 
 @router.get("/{sos_id}/edit", response_class=HTMLResponse)
@@ -189,16 +180,13 @@ async def edit_sos(
     employees_result = await db.execute(select(User).where(User.is_active == True))
     employees = employees_result.scalars().all()
 
-    return templates.TemplateResponse("sos/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "sos/form.html", {"current_user": current_user,
         "active_page": "sos",
         "item": item,
         "points": points,
         "employees": employees,
         "statuses": SOS_STATUSES,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/{sos_id}/edit")

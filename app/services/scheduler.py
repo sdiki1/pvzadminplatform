@@ -97,7 +97,7 @@ class BotScheduler:
     async def notify_admin_about_open_shifts(self) -> None:
         tz = ZoneInfo(self.settings.timezone)
         now = datetime.now(tz)
-        overdue_threshold = now - timedelta(hours=14)
+        overdue_threshold = (now - timedelta(hours=14)).replace(tzinfo=None)
 
         async with self.session_factory() as session:
             shift_repo = ShiftRepo(session)

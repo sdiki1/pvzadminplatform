@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Ведомость #{{ run.id }} — PVZ Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-1">Ведомость #{{ run.id }}</h4>
+        <p class="text-muted mb-0">
+            {{ run.period_start.strftime('%d.%m.%Y') }} — {{ run.period_end.strftime('%d.%m.%Y') }}
+            &middot; Выплата {{ run.payout_day }}-го числа
+            &middot; Сформирована {{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/payroll/{{ run.id }}/export" class="btn btn-success">
+            <i class="bi bi-file-earmark-excel"></i> Сводная XLSX
+        </a>
+        <a href="/payroll/{{ run.id }}/export-sheets" class="btn btn-outline-success">
+            <i class="bi bi-file-earmark-excel"></i> Расчётные листы XLSX
+        </a>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-value">{{ items|length }}</div>
+            <div class="stat-label">Сотрудников</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-value">{{ "%.2f"|format(total_amount|float) }} ₽</div>
+            <div class="stat-label">Итого к выплате</div>
+        </div>
+    </div>
+</div>
+
+<div class="table-container">
+    <table class="table table-hover mb-0">
+        <thead>
+            <tr>
+                <th>Сотрудник</th>
+                <th class="text-center">Смены</th>
+                <th class="text-end">Часы</th>
+                <th class="text-end">База</th>
+                <th class="text-end">Мотивация</th>
+                <th class="text-end">Бонус выд.</th>
+                <th class="text-end">Удержания</th>
+                <th class="text-end">Бонус мен.</th>
+                <th class="text-end">Корректир.</th>
+                <th class="text-end fw-bold">Итого</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            {% set user = users_map.get(item.user_id) %}
+            <tr>
+                <td>{{ user.full_name if user else 'ID ' ~ item.user_id }}</td>
+                <td class="text-center">{{ item.shifts_count }}</td>
+                <td class="text-end">{{ "%.1f"|format(item.hours_total|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.base_amount_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.motivation_amount_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.issued_bonus_rub|float) }}</td>
+                <td class="text-end text-danger">{{ "%.2f"|format(item.dispute_deduction_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.manager_bonus_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.adjustments_rub|float) }}</td>
+                <td class="text-end fw-bold">{{ "%.2f"|format(item.total_amount_rub|float) }} ₽</td>
+                <td>
+                    <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}" class="btn btn-sm btn-outline-primary" title="Расчётный лист">
+                        <i class="bi bi-file-text"></i>
+                    </a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

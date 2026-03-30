@@ -66,9 +66,7 @@ async def list_deliveries(
     points = points_result.scalars().all()
     points_map = {p.id: p for p in points}
 
-    return templates.TemplateResponse("deliveries/list.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "deliveries/list.html", {"current_user": current_user,
         "active_page": "deliveries",
         "items": items,
         "total": total,
@@ -78,8 +76,7 @@ async def list_deliveries(
         "points_map": points_map,
         "point_id": point_id,
         "date_from": date_from,
-        "date_to": date_to,
-    })
+        "date_to": date_to})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -91,14 +88,11 @@ async def new_delivery(
     points_result = await db.execute(select(Point).where(Point.is_active == True))
     points = points_result.scalars().all()
 
-    return templates.TemplateResponse("deliveries/form.html", {
-        "request": request,
-        "current_user": current_user,
+    return templates.TemplateResponse(request, "deliveries/form.html", {"current_user": current_user,
         "active_page": "deliveries",
         "item": None,
         "points": points,
-        "error": None,
-    })
+        "error": None})
 
 
 @router.post("/new")
