@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -15,6 +16,11 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/points", tags=["points"])
+
+
+def _parse_time_field(value: str | None, default: str) -> time:
+    raw = (value or default).strip()
+    return datetime.strptime(raw, "%H:%M").time()
 
 
 @router.get("", response_class=HTMLResponse)
@@ -83,6 +89,18 @@ async def create_point(
     current_user: WebUser = Depends(get_current_user),
 ):
     form = await request.form()
+    try:
+        work_start = _parse_time_field(form.get("work_start"), "09:00")
+        work_end = _parse_time_field(form.get("work_end"), "21:00")
+    except ValueError:
+        mp_result = await db.execute(select(Marketplace).where(Marketplace.is_active == True))
+        marketplaces = mp_result.scalars().all()
+        return templates.TemplateResponse(request, "points/form.html", {"current_user": current_user,
+            "active_page": "points",
+            "item": None,
+            "marketplaces": marketplaces,
+            "error": "Неверный формат времени. Используйте HH:MM (например, 09:00)."})
+
     point = Point(
         name=form.get("name", "").strip(),
         address=form.get("address", "").strip(),
@@ -90,8 +108,8 @@ async def create_point(
         latitude=float(form.get("latitude") or 0),
         longitude=float(form.get("longitude") or 0),
         radius_m=int(form.get("radius_m") or 150),
-        work_start=form.get("work_start") or "09:00",
-        work_end=form.get("work_end") or "21:00",
+        work_start=work_start,
+        work_end=work_end,
         is_active=form.get("is_active") == "on",
         short_name=form.get("short_name", "").strip() or None,
         address_normalized=form.get("address_normalized", "").strip() or form.get("address", "").strip(),
@@ -161,14 +179,26 @@ async def update_point(
         return RedirectResponse(url="/points", status_code=302)
 
     form = await request.form()
+    try:
+        work_start = _parse_time_field(form.get("work_start"), "09:00")
+        work_end = _parse_time_field(form.get("work_end"), "21:00")
+    except ValueError:
+        mp_result = await db.execute(select(Marketplace).where(Marketplace.is_active == True))
+        marketplaces = mp_result.scalars().all()
+        return templates.TemplateResponse(request, "points/form.html", {"current_user": current_user,
+            "active_page": "points",
+            "item": point,
+            "marketplaces": marketplaces,
+            "error": "Неверный формат времени. Используйте HH:MM (например, 09:00)."})
+
     point.name = form.get("name", "").strip()
     point.address = form.get("address", "").strip()
     point.brand = form.get("brand", "wb")
     point.latitude = float(form.get("latitude") or 0)
     point.longitude = float(form.get("longitude") or 0)
     point.radius_m = int(form.get("radius_m") or 150)
-    point.work_start = form.get("work_start") or "09:00"
-    point.work_end = form.get("work_end") or "21:00"
+    point.work_start = work_start
+    point.work_end = work_end
     point.is_active = form.get("is_active") == "on"
     point.short_name = form.get("short_name", "").strip() or None
     point.address_normalized = form.get("address_normalized", "").strip() or point.address
