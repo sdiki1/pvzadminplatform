@@ -71,7 +71,7 @@ async def login_submit(request: Request):
             status_code=401,
         )
 
-    token = create_access_token(data={"sub": str(user.id), "role": user.role})
+    token = create_access_token(data={"sub": str(user.id), "roles": user.roles})
     response = RedirectResponse(url="/", status_code=302)
     response.set_cookie(
         key="access_token",

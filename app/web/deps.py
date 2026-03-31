@@ -61,13 +61,15 @@ async def get_current_user(
 
 class RequireRole:
     def __init__(self, *allowed_roles: WebRoleEnum):
-        self.allowed_roles = allowed_roles
+        self.allowed_values = {r.value for r in allowed_roles}
 
     async def __call__(self, user: WebUser = Depends(get_current_user)) -> WebUser:
-        if user.role not in [r.value for r in self.allowed_roles] and user.role not in self.allowed_roles:
+        if not set(user.roles).intersection(self.allowed_values):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user
 
 
 require_admin = RequireRole(WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN)
-require_manager = RequireRole(WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN, WebRoleEnum.MANAGER, WebRoleEnum.SENIOR)
+require_manager = RequireRole(
+    WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN, WebRoleEnum.MANAGER, WebRoleEnum.SENIOR
+)

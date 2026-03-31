@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     manager_bonus_2: int = Field(default=5000, alias="MANAGER_BONUS_2")
     manager_bonus_3_per_ticket: int = Field(default=200, alias="MANAGER_BONUS_3_PER_TICKET")
 
+    # Email (Yandex SMTP) — used for admin confirmation codes
+    smtp_host: str = Field(default="smtp.yandex.ru", alias="SMTP_HOST")
+    smtp_port: int = Field(default=465, alias="SMTP_PORT")
+    smtp_user: Optional[str] = Field(default=None, alias="SMTP_USER")
+    smtp_password: Optional[str] = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_from: Optional[str] = Field(default=None, alias="SMTP_FROM")
+    # TTL for email confirmation codes (minutes)
+    email_code_ttl_minutes: int = Field(default=10, alias="EMAIL_CODE_TTL_MINUTES")
+
     # Web admin panel settings
     web_host: str = Field(default="0.0.0.0", alias="WEB_HOST")
     web_port: int = Field(default=8000, alias="WEB_PORT")

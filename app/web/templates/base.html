@@ -76,7 +76,7 @@
                 <i class="bi bi-file-earmark-bar-graph"></i> Отчёты
             </a>
 
-            {% if current_user and current_user.role in ('superadmin', 'admin') %}
+            {% if current_user and ('superadmin' in current_user.roles or 'admin' in current_user.roles) %}
             <div class="nav-section">Администрирование</div>
             <a href="/users" class="nav-link {% if active_page == 'users' %}active{% endif %}">
                 <i class="bi bi-person-gear"></i> Пользователи

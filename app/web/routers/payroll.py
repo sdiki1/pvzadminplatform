@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from app.db.models import (
     User,
 )
 from app.db.repositories import PayrollRepo, UserRepo
+from app.services.email import EmailService
 from app.services.payroll import PayrollService
 from app.services.reports import ReportService
 from app.web.deps import get_current_user, get_db, require_manager
@@ -89,8 +91,21 @@ async def generate_payroll(
         })
 
     settings = get_settings()
+    email_svc = EmailService(settings)
+    if email_svc.enabled and current_user.email:
+        payload = {
+            "payout_day": payout_day,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+        }
+        await email_svc.send_confirmation_code(
+            db, current_user.id, current_user.email,
+            "payroll_generate", json.dumps(payload),
+        )
+        return RedirectResponse(url="/confirm/verify?operation=payroll_generate", status_code=302)
+
     service = PayrollService(db, settings)
-    run_id, results = await service.run_payroll(
+    run_id, _ = await service.run_payroll(
         period_start=period_start,
         period_end=period_end,
         payout_day=payout_day,

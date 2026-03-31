@@ -23,16 +23,33 @@
     </form>
 </div>
 
+{% set role_colors = {
+    "superadmin": "danger",
+    "admin": "warning",
+    "manager": "primary",
+    "senior": "success",
+    "employee": "secondary",
+    "disputes": "info",
+    "marketing": "purple",
+    "viewer": "light"
+} %}
+
 <div class="table-container">
     <table class="table">
-        <thead><tr><th>ID</th><th>Логин</th><th>ФИО</th><th>Роль</th><th>Статус</th><th>Последний вход</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Логин</th><th>ФИО</th><th>Роли</th><th>Статус</th><th>Последний вход</th><th></th></tr></thead>
         <tbody>
             {% for item in items %}
             <tr>
                 <td>{{ item.id }}</td>
                 <td>{{ item.login }}</td>
                 <td>{{ item.full_name }}</td>
-                <td><span class="badge bg-info">{{ item.role }}</span></td>
+                <td>
+                    {% for r in item.roles %}
+                    <span class="badge bg-{{ role_colors.get(r, 'secondary') }} me-1">
+                        {{ role_labels.get(r, r) }}
+                    </span>
+                    {% endfor %}
+                </td>
                 <td>{% if item.is_active %}<span class="badge bg-success">Активен</span>{% else %}<span class="badge bg-secondary">Неактивен</span>{% endif %}</td>
                 <td>{{ item.last_login_at.strftime('%d.%m.%Y %H:%M') if item.last_login_at else 'Никогда' }}</td>
                 <td><a href="/users/{{ item.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a></td>

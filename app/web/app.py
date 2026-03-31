@@ -55,6 +55,7 @@ def create_app() -> FastAPI:
     from app.web.routers.adjustments import router as adjustments_router
     from app.web.routers.geofence import router as geofence_router
     from app.web.routers.marketplaces import router as marketplaces_router
+    from app.web.routers.confirm import router as confirm_router
 
     app.include_router(dashboard_router)
     app.include_router(points_router)
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(adjustments_router)
     app.include_router(geofence_router)
     app.include_router(marketplaces_router)
+    app.include_router(confirm_router)
 
     @app.exception_handler(401)
     async def unauthorized_handler(request: Request, exc):

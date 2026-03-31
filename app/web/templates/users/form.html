@@ -23,14 +23,6 @@
                 <input type="password" class="form-control" name="password" {% if not item %}required{% endif %} placeholder="{{ 'Оставьте пустым, чтобы не менять' if item else '' }}">
             </div>
             <div class="col-md-4">
-                <label class="form-label">Роль</label>
-                <select class="form-select" name="role">
-                    {% for code, label in web_roles %}
-                    <option value="{{ code }}" {% if item and item.role == code %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-4">
                 <label class="form-label">ФИО</label>
                 <input type="text" class="form-control" name="full_name" value="{{ item.full_name if item else '' }}">
             </div>
@@ -41,12 +33,36 @@
             <div class="col-md-4">
                 <label class="form-label">Email</label>
                 <input type="email" class="form-control" name="email" value="{{ item.email if item and item.email else '' }}">
+                <div class="form-text">Требуется для получения кодов подтверждения критических операций.</div>
             </div>
-            <div class="col-12">
-                <div class="form-check">
+            <div class="col-md-4">
+                <div class="form-check mt-4">
                     <input class="form-check-input" type="checkbox" name="is_active" id="is_active" {% if not item or item.is_active %}checked{% endif %}>
                     <label class="form-check-label" for="is_active">Активен</label>
                 </div>
+            </div>
+
+            <div class="col-12">
+                <label class="form-label fw-semibold">Роли</label>
+                <div class="row g-2">
+                    {% set item_roles = item.roles if item else [] %}
+                    {% for code, label in web_roles %}
+                    <div class="col-md-3 col-6">
+                        <div class="form-check">
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                name="roles"
+                                value="{{ code }}"
+                                id="role_{{ code }}"
+                                {% if code in item_roles %}checked{% endif %}
+                            >
+                            <label class="form-check-label" for="role_{{ code }}">{{ label }}</label>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="form-text">Выберите одну или несколько ролей. Если ничего не выбрано — назначается «Просмотр».</div>
             </div>
         </div>
         <div class="mt-4">

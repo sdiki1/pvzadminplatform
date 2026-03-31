@@ -29,6 +29,7 @@ from app.db.models.core import (
 # New web models
 from app.db.models.web import (
     AuditLog,
+    EmailConfirmation,
     WebRoleEnum,
     WebUser,
 )
@@ -108,6 +109,7 @@ __all__ = [
     "WebRoleEnum",
     "WebUser",
     "AuditLog",
+    "EmailConfirmation",
     # Reference
     "Marketplace",
     "EmployeeAlias",
