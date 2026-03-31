@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     bot_token: str = Field(alias="BOT_TOKEN")
     database_url: str = Field(default="postgresql+asyncpg://pvz:pvz@localhost:5432/pvz", alias="DATABASE_URL")
-    timezone: str = Field(default="Europe/Moscow", alias="TIMEZONE")
+    timezone: str = Field(default="Asia/Yekaterinburg", alias="TIMEZONE")
 
     admin_ids_raw: str = Field(default="", alias="ADMIN_IDS")
     confirm_request_time: str = Field(default="19:00", alias="CONFIRM_REQUEST_TIME")

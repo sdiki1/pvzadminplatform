@@ -17,7 +17,6 @@ from app.db.models import (
     User,
 )
 from app.db.repositories import (
-    AssignmentRepo,
     ManualAdjustmentRepo,
     MotivationRepo,
     PayrollRepo,
@@ -54,7 +53,6 @@ class PayrollService:
 
         self.user_repo = UserRepo(session)
         self.point_repo = PointRepo(session)
-        self.assignment_repo = AssignmentRepo(session)
         self.shift_repo = ShiftRepo(session)
         self.motivation_repo = MotivationRepo(session)
         self.adjustment_repo = ManualAdjustmentRepo(session)
@@ -72,9 +70,6 @@ class PayrollService:
 
         points = await self.point_repo.list_all()
         points_map = {p.id: p for p in points}
-
-        assignments = await self.assignment_repo.list_all_active()
-        assignment_map = {(a.user_id, a.point_id): a for a in assignments}
 
         shifts = await self.shift_repo.list_closed_between(period_start, period_end)
         valid_shifts = [s for s in shifts if self._is_shift_payable(s)]
@@ -95,9 +90,11 @@ class PayrollService:
             shift_hours_by_user[shift.user_id] += hours
             shifts_count_by_user[shift.user_id] += 1
 
-            assignment = assignment_map.get((shift.user_id, shift.point_id))
+            user = users_map.get(shift.user_id)
+            if not user:
+                continue
             point = points_map.get(shift.point_id)
-            base_by_user[shift.user_id] += self._calc_shift_base(shift, assignment, point)
+            base_by_user[shift.user_id] += self._calc_shift_base(shift, user, point)
 
         user_id_by_last_name = {}
         for user in users:
@@ -220,16 +217,11 @@ class PayrollService:
         mins = shift.duration_minutes or 0
         return Decimal(mins) / Decimal("60")
 
-    def _calc_shift_base(self, shift: Shift, assignment, point) -> Decimal:
+    def _calc_shift_base(self, shift: Shift, user: User, point) -> Decimal:
         hours = self._shift_hours(shift)
         is_ozon = bool(point and point.brand.value == "ozon")
-        if assignment is None:
-            if is_ozon:
-                return Decimal("1900")
-            return ZERO
-
-        shift_rate = Decimal(assignment.shift_rate_rub or 0)
-        hourly_rate = Decimal(assignment.hourly_rate_rub or 0)
+        shift_rate = Decimal(user.shift_rate_rub or 0)
+        hourly_rate = Decimal(user.hourly_rate_rub or 0)
 
         # Если указана почасовая ставка и смена существенно меньше 8 часов,
         # считаем почасовую оплату; иначе оплата за смену.

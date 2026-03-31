@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -126,6 +125,7 @@ async def employee_detail(
         "current_user": current_user,
         "active_page": "employees",
         "item": employee,
+        "can_view_rates": current_user.has_role("superadmin", "admin"),
         "aliases": aliases,
         "assignments": assignments,
         "points_map": points_map,
@@ -217,8 +217,6 @@ async def assign_to_point(
 ):
     form = await request.form()
     point_id = int(form.get("point_id", 0))
-    shift_rate = Decimal(form.get("shift_rate_rub", "0") or "0")
-    hourly_rate = Decimal(form.get("hourly_rate_rub", "0") or "0")
     is_primary = form.get("is_primary") == "on"
 
     # Check existing
@@ -231,16 +229,14 @@ async def assign_to_point(
     assignment = result.scalar_one_or_none()
 
     if assignment:
-        assignment.shift_rate_rub = shift_rate
-        assignment.hourly_rate_rub = hourly_rate
         assignment.is_primary = is_primary
         assignment.is_active = True
     else:
         assignment = EmployeePointAssignment(
             user_id=employee_id,
             point_id=point_id,
-            shift_rate_rub=shift_rate,
-            hourly_rate_rub=hourly_rate,
+            shift_rate_rub=0,
+            hourly_rate_rub=None,
             is_primary=is_primary,
             is_active=True,
         )

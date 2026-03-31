@@ -58,9 +58,11 @@
             </a>
 
             <div class="nav-section">Зарплата</div>
+            {% if current_user and ('superadmin' in current_user.roles or 'admin' in current_user.roles) %}
             <a href="/salary" class="nav-link {% if active_page == 'salary' %}active{% endif %}">
                 <i class="bi bi-currency-ruble"></i> Оклады и ставки
             </a>
+            {% endif %}
             <a href="/payroll" class="nav-link {% if active_page == 'payroll' %}active{% endif %}">
                 <i class="bi bi-cash-stack"></i> Ведомости
             </a>

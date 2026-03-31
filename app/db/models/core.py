@@ -81,6 +81,9 @@ class User(Base):
 
     # 1/2/3 - для доп. начислений в выплате 10-го числа
     manager_bonus_type: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Персональные ставки сотрудника (применяются во всех точках)
+    shift_rate_rub: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
+    hourly_rate_rub: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -278,6 +281,23 @@ class PayrollItem(Base):
     total_amount_rub: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"), nullable=False)
 
     details_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class PlannedShift(Base):
+    """Shift scheduled via web admin (not yet opened by the employee via bot)."""
+
+    __tablename__ = "planned_shifts"
+    __table_args__ = (UniqueConstraint("user_id", "shift_date", name="uq_planned_user_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    point_id: Mapped[int] = mapped_column(ForeignKey("points.id", ondelete="CASCADE"), nullable=False, index=True)
+    shift_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user: Mapped[User] = relationship()
+    point: Mapped[Point] = relationship()
 
 
 class GeofenceException(Base):

@@ -45,7 +45,7 @@
         <div class="rule-card">
             <h6><span class="point-badge-wb me-2">WB</span> Wildberries — правила начисления</h6>
             <ul class="mb-0 ps-3" style="font-size:13px">
-                <li><strong>База:</strong> ставка за смену; если смена &lt; 8 ч — почасовая ставка × часы</li>
+                <li><strong>База:</strong> персональная ставка сотрудника; если смена &lt; 8 ч — почасовая ставка × часы</li>
                 <li><strong>Приёмка:</strong> сумма в ₽ из статистики, привязывается к смене</li>
                 <li><strong>Раздел смены:</strong> несколько менеджеров на одной точке в один день — приёмка и выданные делятся пропорционально часам</li>
                 <li>
@@ -93,16 +93,30 @@
             <strong>{{ user.full_name }}</strong>
             {% if user.last_name %}<span class="text-muted ms-1" style="font-size:12px">(@{{ user.last_name }})</span>{% endif %}
         </div>
-        <form method="post" action="/salary/employee/{{ user.id }}/bonus-type" class="d-flex align-items-center gap-2">
-            <label class="form-label mb-0 me-1 small text-muted">Тип бонуса:</label>
-            <select name="manager_bonus_type" class="form-select form-select-sm" style="width:240px">
-                <option value="">Нет</option>
-                <option value="1" {% if user.manager_bonus_type == 1 %}selected{% endif %}>Тип 1 — {{ manager_bonus_1 | int }} ₽ фикс.</option>
-                <option value="2" {% if user.manager_bonus_type == 2 %}selected{% endif %}>Тип 2 — {{ manager_bonus_2 | int }} ₽ фикс.</option>
-                <option value="3" {% if user.manager_bonus_type == 3 %}selected{% endif %}>Тип 3 — {{ manager_bonus_3_per_ticket | int }} ₽/тикет</option>
-            </select>
-            <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-check2"></i></button>
-        </form>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <form method="post" action="/salary/employee/{{ user.id }}/rates" class="d-flex align-items-center gap-2">
+                <label class="form-label mb-0 small text-muted">Ставки:</label>
+                <input type="number" name="shift_rate_rub"
+                    value="{{ user.shift_rate_rub | float | round(2) }}"
+                    step="0.01" min="0"
+                    class="form-control form-control-sm rate-input" placeholder="Смена, ₽">
+                <input type="number" name="hourly_rate_rub"
+                    value="{{ user.hourly_rate_rub | float | round(2) if user.hourly_rate_rub is not none else '' }}"
+                    step="0.01" min="0"
+                    class="form-control form-control-sm rate-input" placeholder="Час, ₽">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i></button>
+            </form>
+            <form method="post" action="/salary/employee/{{ user.id }}/bonus-type" class="d-flex align-items-center gap-2">
+                <label class="form-label mb-0 me-1 small text-muted">Тип бонуса:</label>
+                <select name="manager_bonus_type" class="form-select form-select-sm" style="width:240px">
+                    <option value="">Нет</option>
+                    <option value="1" {% if user.manager_bonus_type == 1 %}selected{% endif %}>Тип 1 — {{ manager_bonus_1 | int }} ₽ фикс.</option>
+                    <option value="2" {% if user.manager_bonus_type == 2 %}selected{% endif %}>Тип 2 — {{ manager_bonus_2 | int }} ₽ фикс.</option>
+                    <option value="3" {% if user.manager_bonus_type == 3 %}selected{% endif %}>Тип 3 — {{ manager_bonus_3_per_ticket | int }} ₽/тикет</option>
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-check2"></i></button>
+            </form>
+        </div>
     </div>
 
     {# ══ WB section ══ #}
@@ -115,8 +129,6 @@
             <thead>
                 <tr>
                     <th>Точка</th>
-                    <th>Ставка за смену, ₽</th>
-                    <th>Почасовая ставка, ₽ <small class="text-muted fw-normal">(если смена &lt; 8 ч)</small></th>
                     <th>Основная</th>
                     <th></th>
                 </tr>
@@ -126,30 +138,6 @@
                 {% set point = points_map.get(a.point_id) %}
                 <tr>
                     <td>{{ point.name if point else '—' }}</td>
-                    <td>
-                        <form method="post" action="/salary/assignment/{{ a.id }}" class="d-flex gap-1">
-                            <input type="hidden" name="hourly_rate_rub" value="{{ a.hourly_rate_rub if a.hourly_rate_rub is not none else '' }}">
-                            <input type="number" name="shift_rate_rub"
-                                value="{{ a.shift_rate_rub | float | round(2) }}"
-                                step="0.01" min="0"
-                                class="form-control form-control-sm rate-input" placeholder="0.00">
-                            <button type="submit" class="btn btn-sm btn-outline-primary px-2" title="Сохранить">
-                                <i class="bi bi-check2"></i>
-                            </button>
-                        </form>
-                    </td>
-                    <td>
-                        <form method="post" action="/salary/assignment/{{ a.id }}" class="d-flex gap-1">
-                            <input type="hidden" name="shift_rate_rub" value="{{ a.shift_rate_rub | float | round(2) }}">
-                            <input type="number" name="hourly_rate_rub"
-                                value="{{ a.hourly_rate_rub | float | round(2) if a.hourly_rate_rub is not none else '' }}"
-                                step="0.01" min="0"
-                                class="form-control form-control-sm rate-input" placeholder="не задана">
-                            <button type="submit" class="btn btn-sm btn-outline-primary px-2" title="Сохранить">
-                                <i class="bi bi-check2"></i>
-                            </button>
-                        </form>
-                    </td>
                     <td class="text-center">
                         {% if a.is_primary %}<span class="badge bg-success">Да</span>{% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
@@ -175,8 +163,6 @@
             <thead>
                 <tr>
                     <th>Точка</th>
-                    <th>Ставка за смену, ₽ <small class="text-muted fw-normal">(по умолч. 1 900 ₽)</small></th>
-                    <th>Почасовая ставка, ₽ <small class="text-muted fw-normal">(если смена &lt; 8 ч)</small></th>
                     <th>Основная</th>
                     <th></th>
                 </tr>
@@ -186,30 +172,6 @@
                 {% set point = points_map.get(a.point_id) %}
                 <tr>
                     <td>{{ point.name if point else '—' }}</td>
-                    <td>
-                        <form method="post" action="/salary/assignment/{{ a.id }}" class="d-flex gap-1">
-                            <input type="hidden" name="hourly_rate_rub" value="{{ a.hourly_rate_rub if a.hourly_rate_rub is not none else '' }}">
-                            <input type="number" name="shift_rate_rub"
-                                value="{{ a.shift_rate_rub | float | round(2) }}"
-                                step="0.01" min="0"
-                                class="form-control form-control-sm rate-input" placeholder="1900.00">
-                            <button type="submit" class="btn btn-sm btn-outline-primary px-2" title="Сохранить">
-                                <i class="bi bi-check2"></i>
-                            </button>
-                        </form>
-                    </td>
-                    <td>
-                        <form method="post" action="/salary/assignment/{{ a.id }}" class="d-flex gap-1">
-                            <input type="hidden" name="shift_rate_rub" value="{{ a.shift_rate_rub | float | round(2) }}">
-                            <input type="number" name="hourly_rate_rub"
-                                value="{{ a.hourly_rate_rub | float | round(2) if a.hourly_rate_rub is not none else '' }}"
-                                step="0.01" min="0"
-                                class="form-control form-control-sm rate-input" placeholder="не задана">
-                            <button type="submit" class="btn btn-sm btn-outline-primary px-2" title="Сохранить">
-                                <i class="bi bi-check2"></i>
-                            </button>
-                        </form>
-                    </td>
                     <td class="text-center">
                         {% if a.is_primary %}<span class="badge bg-success">Да</span>{% else %}<span class="text-muted">—</span>{% endif %}
                     </td>
@@ -235,21 +197,19 @@
             <select name="point_id" class="form-select form-select-sm" style="max-width:300px" required>
                 <option value="">Добавить точку...</option>
                 {% set assigned_ids = user_assignments | map(attribute='point_id') | list %}
-                {% if wb_points | selectattr('id', 'not in', assigned_ids) | list %}
+                {% set wb_available_points = wb_points | rejectattr('id', 'in', assigned_ids) | sort(attribute='name') | list %}
+                {% set ozon_available_points = ozon_points | rejectattr('id', 'in', assigned_ids) | sort(attribute='name') | list %}
+                {% if wb_available_points %}
                 <optgroup label="Wildberries">
-                    {% for p in wb_points | sort(attribute='name') %}
-                        {% if p.id not in assigned_ids %}
+                    {% for p in wb_available_points %}
                         <option value="{{ p.id }}">{{ p.name }}</option>
-                        {% endif %}
                     {% endfor %}
                 </optgroup>
                 {% endif %}
-                {% if ozon_points | selectattr('id', 'not in', assigned_ids) | list %}
+                {% if ozon_available_points %}
                 <optgroup label="Ozon">
-                    {% for p in ozon_points | sort(attribute='name') %}
-                        {% if p.id not in assigned_ids %}
+                    {% for p in ozon_available_points %}
                         <option value="{{ p.id }}">{{ p.name }}</option>
-                        {% endif %}
                     {% endfor %}
                 </optgroup>
                 {% endif %}

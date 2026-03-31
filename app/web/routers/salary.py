@@ -10,8 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.models import BrandEnum, EmployeePointAssignment, Point, RoleEnum, User
-from app.web.deps import get_db, require_manager
+from app.db.models import BrandEnum, EmployeePointAssignment, Point, User
+from app.web.deps import get_db, require_admin
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -30,7 +30,7 @@ BONUS_TYPE_LABELS = {
 async def salary_index(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user=Depends(require_admin),
 ):
     settings = get_settings()
 
@@ -79,18 +79,16 @@ async def salary_index(
     })
 
 
-@router.post("/assignment/{assignment_id}")
-async def update_assignment_rate(
-    assignment_id: int,
+@router.post("/employee/{user_id}/rates")
+async def update_user_rates(
+    user_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user=Depends(require_admin),
 ):
-    result = await db.execute(
-        select(EmployeePointAssignment).where(EmployeePointAssignment.id == assignment_id)
-    )
-    assignment = result.scalar_one_or_none()
-    if not assignment:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
         return RedirectResponse(url="/salary", status_code=302)
 
     form = await request.form()
@@ -105,11 +103,11 @@ async def update_assignment_rate(
     except InvalidOperation:
         hourly_rate = None
 
-    assignment.shift_rate_rub = shift_rate
-    assignment.hourly_rate_rub = hourly_rate
+    user.shift_rate_rub = shift_rate
+    user.hourly_rate_rub = hourly_rate
     await db.commit()
 
-    return RedirectResponse(url="/salary#user-" + str(assignment.user_id), status_code=302)
+    return RedirectResponse(url="/salary#user-" + str(user_id), status_code=302)
 
 
 @router.post("/employee/{user_id}/bonus-type")
@@ -117,7 +115,7 @@ async def update_bonus_type(
     user_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user=Depends(require_admin),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -137,7 +135,7 @@ async def add_assignment(
     user_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user=Depends(require_admin),
 ):
     """Add a new point assignment for an employee."""
     result = await db.execute(select(User).where(User.id == user_id))
@@ -179,7 +177,7 @@ async def add_assignment(
 async def remove_assignment(
     assignment_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user=Depends(require_admin),
 ):
     result = await db.execute(
         select(EmployeePointAssignment).where(EmployeePointAssignment.id == assignment_id)

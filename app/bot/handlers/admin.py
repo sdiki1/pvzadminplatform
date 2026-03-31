@@ -98,7 +98,7 @@ async def admin_help(message: Message) -> None:
         "/admin_delete_point point_id\n"
         "/admin_restore_point point_id\n"
         "/admin_seed_lesnoy_points [lat lon radius]\n"
-        "/admin_assign_rate tg_id;point_name;shift_rate;hourly_rate;is_primary\n"
+        "/admin_assign_rate tg_id;point_name;shift_rate;hourly_rate;is_primary (ставки сотрудника)\n"
         "/admin_add_adjustment tg_id;period_start;period_end;type;amount;comment\n"
         "/admin_sync [YYYY-MM-DD YYYY-MM-DD]\n"
         "/admin_payroll <10|25> [YYYY-MM-DD ref_date] [critical_code]\n"
@@ -727,6 +727,8 @@ async def admin_assign_rate(message: Message) -> None:
             await message.answer("Точка не найдена")
             return
 
+        user.shift_rate_rub = shift_rate
+        user.hourly_rate_rub = hourly_rate
         await assignment_repo.assign_user_to_point(
             user_id=user.id,
             point_id=point.id,
@@ -735,7 +737,7 @@ async def admin_assign_rate(message: Message) -> None:
             is_primary=is_primary,
         )
 
-    await message.answer("Ставка сохранена")
+    await message.answer("Ставка сотрудника сохранена и назначение обновлено")
 
 
 @router.message(Command("admin_add_adjustment"))

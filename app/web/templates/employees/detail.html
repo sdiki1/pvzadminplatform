@@ -31,6 +31,10 @@
                         </td>
                     </tr>
                     <tr><td class="text-muted">Тип бонуса мен.</td><td>{{ item.manager_bonus_type or '—' }}</td></tr>
+                    {% if can_view_rates %}
+                    <tr><td class="text-muted">Ставка за смену</td><td>{{ "%.2f"|format(item.shift_rate_rub|float) }} ₽</td></tr>
+                    <tr><td class="text-muted">Ставка в час</td><td>{{ "%.2f"|format(item.hourly_rate_rub|float) if item.hourly_rate_rub is not none else '—' }} ₽/ч</td></tr>
+                    {% endif %}
                 </table>
             </div>
         </div>
@@ -76,8 +80,6 @@
             <thead>
                 <tr>
                     <th>Точка</th>
-                    <th class="text-end">Ставка/смена</th>
-                    <th class="text-end">Почасовая</th>
                     <th>Основная</th>
                 </tr>
             </thead>
@@ -86,8 +88,6 @@
                 {% set point = points_map.get(a.point_id) %}
                 <tr>
                     <td>{{ point.name if point else 'ID ' ~ a.point_id }}</td>
-                    <td class="text-end">{{ "%.2f"|format(a.shift_rate_rub|float) if a.shift_rate_rub else '—' }} ₽</td>
-                    <td class="text-end">{{ "%.2f"|format(a.hourly_rate_rub|float) if a.hourly_rate_rub else '—' }} ₽/ч</td>
                     <td>{% if a.is_primary %}<span class="badge bg-primary">Да</span>{% endif %}</td>
                 </tr>
                 {% endfor %}
@@ -110,14 +110,6 @@
                         {% endif %}
                         {% endfor %}
                     </select>
-                </div>
-                <div>
-                    <label class="form-label small mb-0">Ставка/смена (₽)</label>
-                    <input type="number" name="shift_rate_rub" class="form-control form-control-sm" step="0.01" style="width:120px">
-                </div>
-                <div>
-                    <label class="form-label small mb-0">Почасовая (₽)</label>
-                    <input type="number" name="hourly_rate_rub" class="form-control form-control-sm" step="0.01" style="width:120px">
                 </div>
                 <div class="form-check mt-2">
                     <input type="checkbox" name="is_primary" class="form-check-input" id="isPrimary">

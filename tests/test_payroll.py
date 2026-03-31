@@ -20,7 +20,7 @@ from app.db.models import (
     ShiftState,
     User,
 )
-from app.db.repositories import AssignmentRepo, ManualAdjustmentRepo
+from app.db.repositories import ManualAdjustmentRepo
 from app.services.payroll import PayrollService
 from app.utils.dates import payroll_period_for_payout
 
@@ -40,8 +40,18 @@ async def test_payroll_split_and_adjustments() -> None:
     )
 
     async with Session() as session:
-        user1 = User(telegram_id=1001, full_name="Иванов Иван", last_name="Иванов")
-        user2 = User(telegram_id=1002, full_name="Петров Петр", last_name="Петров")
+        user1 = User(
+            telegram_id=1001,
+            full_name="Иванов Иван",
+            last_name="Иванов",
+            shift_rate_rub=Decimal("2500"),
+        )
+        user2 = User(
+            telegram_id=1002,
+            full_name="Петров Петр",
+            last_name="Петров",
+            shift_rate_rub=Decimal("2500"),
+        )
         session.add_all([user1, user2])
         await session.flush()
 
@@ -58,10 +68,6 @@ async def test_payroll_split_and_adjustments() -> None:
         )
         session.add(point)
         await session.flush()
-
-        assignment_repo = AssignmentRepo(session)
-        await assignment_repo.assign_user_to_point(user1.id, point.id, Decimal("2500"), None, False)
-        await assignment_repo.assign_user_to_point(user2.id, point.id, Decimal("2500"), None, False)
 
         shift1 = Shift(
             user_id=user1.id,
@@ -181,7 +187,12 @@ async def test_issued_bonus_full_hundred_threshold() -> None:
     )
 
     async with Session() as session:
-        user = User(telegram_id=2001, full_name="Сидоров Сидор", last_name="Сидоров")
+        user = User(
+            telegram_id=2001,
+            full_name="Сидоров Сидор",
+            last_name="Сидоров",
+            shift_rate_rub=Decimal("2500"),
+        )
         session.add(user)
         await session.flush()
 
@@ -198,9 +209,6 @@ async def test_issued_bonus_full_hundred_threshold() -> None:
         )
         session.add(point)
         await session.flush()
-
-        assignment_repo = AssignmentRepo(session)
-        await assignment_repo.assign_user_to_point(user.id, point.id, Decimal("2500"), None, True)
 
         shift = Shift(
             user_id=user.id,

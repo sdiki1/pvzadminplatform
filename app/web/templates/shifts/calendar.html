@@ -2,171 +2,386 @@
 {% block title %}Календарь смен - PVZ Admin{% endblock %}
 
 {% block extra_css %}
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
 <style>
+/* ── FullCalendar overrides ── */
 #calendar {
     min-height: 600px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 1rem;
+    box-shadow: 0 1px 6px rgba(0,0,0,.07);
 }
-.fc .fc-toolbar-title {
-    font-size: 1.1rem;
-    font-weight: 700;
+.fc .fc-toolbar-title { font-size: 1.1rem; font-weight: 700; }
+.fc .fc-button-primary {
+    background: #3b82f6; border-color: #2563eb;
+}
+.fc .fc-button-primary:hover { background: #2563eb; border-color: #1d4ed8; }
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+    background: #1d4ed8; border-color: #1e40af;
 }
 .fc .fc-event {
     cursor: pointer;
     font-size: 11px;
-    padding: 1px 4px;
+    padding: 2px 5px;
+    border-radius: 4px;
     border: none;
+    font-weight: 500;
 }
-.fc-event-closed { opacity: 0.75; }
+.fc .fc-daygrid-event { margin-bottom: 2px; }
+.fc .fc-more-link { color: #6b7280; font-size: 11px; }
+.fc .fc-daygrid-day.fc-day-today { background: #eff6ff; }
+.fc .fc-daygrid-day:hover { background: #f8fafc; cursor: pointer; }
 
-/* Shift detail popup */
+/* ── Legend ── */
+.cal-legend { display: flex; gap: 1rem; font-size: 12px; flex-wrap: wrap; }
+.cal-legend span { display: flex; align-items: center; gap: 5px; }
+.cal-legend i {
+    display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+}
+
+/* ── Popup ── */
 #shiftPopup {
     display: none;
     position: fixed;
-    top: 50%;
-    left: 50%;
+    top: 50%; left: 50%;
     transform: translate(-50%, -50%);
     z-index: 9999;
     background: #fff;
-    border-radius: 10px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.22);
     padding: 1.5rem;
-    min-width: 280px;
-    max-width: 360px;
+    min-width: 300px;
+    max-width: 380px;
+    width: 90%;
 }
 #shiftPopupBackdrop {
     display: none;
-    position: fixed;
-    inset: 0;
+    position: fixed; inset: 0;
     z-index: 9998;
-    background: rgba(0,0,0,0.25);
+    background: rgba(0,0,0,.3);
+    backdrop-filter: blur(2px);
 }
+
+/* ── Book modal ── */
+#bookModal {
+    display: none;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.22);
+    padding: 1.5rem;
+    min-width: 320px;
+    max-width: 420px;
+    width: 90%;
+}
+#bookModalBackdrop {
+    display: none;
+    position: fixed; inset: 0;
+    z-index: 9998;
+    background: rgba(0,0,0,.3);
+    backdrop-filter: blur(2px);
+}
+
+.popup-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+.badge-open    { background: #dbeafe; color: #1d4ed8; }
+.badge-closed  { background: #d1fae5; color: #065f46; }
+.badge-planned { background: #fef3c7; color: #92400e; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
     <h1><i class="bi bi-calendar3 me-2"></i>Календарь смен</h1>
-    <div class="d-flex align-items-center gap-2">
-        <select id="pointFilter" class="form-select form-select-sm" style="width:auto; min-width:160px">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <select id="pointFilter" class="form-select form-select-sm" style="width:auto;min-width:180px">
             <option value="0">Все точки</option>
             {% for p in points %}
             <option value="{{ p.id }}">{{ p.short_name or p.name }}</option>
             {% endfor %}
         </select>
+        <button class="btn btn-warning btn-sm" id="btnBook">
+            <i class="bi bi-plus-circle me-1"></i>Забронировать смену
+        </button>
         <a href="/shifts" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-list"></i> Список
         </a>
     </div>
 </div>
 
-<div class="form-card">
-    <div class="d-flex gap-3 mb-3" style="font-size:13px">
-        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#3b82f6;margin-right:4px"></span>Открытая смена</span>
-        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#10b981;margin-right:4px"></span>Закрытая смена</span>
-    </div>
-    <div id="calendar"></div>
+{# Legend #}
+<div class="cal-legend mb-3">
+    <span><i style="background:#3b82f6"></i>Открытая смена</span>
+    <span><i style="background:#10b981"></i>Закрытая смена</span>
+    <span><i style="background:#f59e0b"></i>Запланированная</span>
 </div>
 
-<!-- Shift detail popup -->
+<div id="calendar"></div>
+
+{# ── Shift detail popup ── #}
 <div id="shiftPopupBackdrop"></div>
 <div id="shiftPopup">
-    <div class="d-flex justify-content-between align-items-start mb-2">
-        <strong id="popupEmployee" style="font-size:15px"></strong>
-        <button type="button" class="btn-close btn-sm" id="popupClose"></button>
+    <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+            <div id="popupEmployee" style="font-size:15px;font-weight:700"></div>
+            <div id="popupKindBadge" class="mt-1"></div>
+        </div>
+        <button type="button" class="btn-close" id="popupClose"></button>
     </div>
-    <table class="table table-sm mb-0">
+    <table class="table table-sm mb-3">
         <tbody>
             <tr><td class="text-muted" style="width:110px">Точка</td><td id="popupPoint"></td></tr>
             <tr><td class="text-muted">Дата</td><td id="popupDate"></td></tr>
-            <tr><td class="text-muted">Статус</td><td id="popupState"></td></tr>
-            <tr><td class="text-muted">Длительность</td><td id="popupDuration"></td></tr>
+            <tr id="popupStateRow"><td class="text-muted">Статус</td><td id="popupState"></td></tr>
+            <tr id="popupDurationRow"><td class="text-muted">Длительность</td><td id="popupDuration"></td></tr>
+            <tr id="popupNotesRow"><td class="text-muted">Заметка</td><td id="popupNotes"></td></tr>
         </tbody>
     </table>
+    <div id="popupActions"></div>
+</div>
+
+{# ── Book shift modal ── #}
+<div id="bookModalBackdrop"></div>
+<div id="bookModal">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-plus-circle me-2 text-warning"></i>Забронировать смену</h6>
+        <button type="button" class="btn-close" id="bookModalClose"></button>
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-semibold">Дата</label>
+        <input type="date" id="bookDate" class="form-control form-control-sm">
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-semibold">Сотрудник</label>
+        <select id="bookUser" class="form-select form-select-sm">
+            <option value="">— выберите —</option>
+            {% for u in users %}
+            <option value="{{ u.id }}">{{ u.full_name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-semibold">Точка</label>
+        <select id="bookPoint" class="form-select form-select-sm">
+            <option value="">— выберите —</option>
+            {% for p in points %}
+            <option value="{{ p.id }}">{{ p.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-semibold">Заметка <span class="text-muted fw-normal">(необязательно)</span></label>
+        <input type="text" id="bookNotes" class="form-control form-control-sm" placeholder="например: замена">
+    </div>
+    <div class="d-flex gap-2 justify-content-end">
+        <button class="btn btn-outline-secondary btn-sm" id="bookCancel">Отмена</button>
+        <button class="btn btn-warning btn-sm" id="bookSave">
+            <i class="bi bi-check2 me-1"></i>Сохранить
+        </button>
+    </div>
+    <div id="bookError" class="text-danger small mt-2" style="display:none"></div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-{# FullCalendar 6 index.global already includes all locales #}
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 <script>
 (function () {
-    var calendarEl = document.getElementById('calendar');
+    var calendarEl  = document.getElementById('calendar');
     var pointFilter = document.getElementById('pointFilter');
-    var popup = document.getElementById('shiftPopup');
-    var backdrop = document.getElementById('shiftPopupBackdrop');
 
+    /* ── Popup ── */
+    var popup         = document.getElementById('shiftPopup');
+    var popupBackdrop = document.getElementById('shiftPopupBackdrop');
     function closePopup() {
         popup.style.display = 'none';
-        backdrop.style.display = 'none';
+        popupBackdrop.style.display = 'none';
     }
     document.getElementById('popupClose').addEventListener('click', closePopup);
-    backdrop.addEventListener('click', closePopup);
+    popupBackdrop.addEventListener('click', closePopup);
 
+    /* ── Book modal ── */
+    var bookModal         = document.getElementById('bookModal');
+    var bookModalBackdrop = document.getElementById('bookModalBackdrop');
+    function closeBook() {
+        bookModal.style.display = 'none';
+        bookModalBackdrop.style.display = 'none';
+        document.getElementById('bookError').style.display = 'none';
+    }
+    function openBook(dateStr) {
+        document.getElementById('bookDate').value  = dateStr || '';
+        document.getElementById('bookUser').value  = '';
+        document.getElementById('bookPoint').value = '';
+        document.getElementById('bookNotes').value = '';
+        document.getElementById('bookError').style.display = 'none';
+        bookModalBackdrop.style.display = 'block';
+        bookModal.style.display = 'block';
+    }
+    document.getElementById('bookModalClose').addEventListener('click', closeBook);
+    document.getElementById('bookCancel').addEventListener('click', closeBook);
+    bookModalBackdrop.addEventListener('click', closeBook);
+    document.getElementById('btnBook').addEventListener('click', function () {
+        openBook('');
+    });
+
+    document.getElementById('bookSave').addEventListener('click', function () {
+        var dateVal  = document.getElementById('bookDate').value;
+        var userId   = document.getElementById('bookUser').value;
+        var pointId  = document.getElementById('bookPoint').value;
+        var notes    = document.getElementById('bookNotes').value.trim();
+        var errEl    = document.getElementById('bookError');
+
+        if (!dateVal || !userId || !pointId) {
+            errEl.textContent = 'Заполните дату, сотрудника и точку';
+            errEl.style.display = 'block';
+            return;
+        }
+        errEl.style.display = 'none';
+
+        fetch('/shifts/api/planned', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ shift_date: dateVal, user_id: +userId, point_id: +pointId, notes: notes }),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.ok) {
+                closeBook();
+                calendar.refetchEvents();
+            } else {
+                errEl.textContent = data.error || 'Ошибка сохранения';
+                errEl.style.display = 'block';
+            }
+        })
+        .catch(function () {
+            errEl.textContent = 'Сетевая ошибка';
+            errEl.style.display = 'block';
+        });
+    });
+
+    /* ── Delete planned shift ── */
+    function deletePlanned(plannedId) {
+        if (!confirm('Удалить запланированную смену?')) return;
+        fetch('/shifts/api/planned/' + plannedId, { method: 'DELETE' })
+        .then(function () {
+            closePopup();
+            calendar.refetchEvents();
+        });
+    }
+
+    /* ── Calendar ── */
     var stateLabels = { open: 'Открыта', closed: 'Закрыта' };
-    var stateColors = { open: '#3b82f6', closed: '#10b981' };
 
     var calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         locale: 'ru',
+        timeZone: 'Asia/Yekaterinburg',
         height: 'auto',
         firstDay: 1,
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: 'dayGridMonth,timeGridWeek,listWeek'
+            right: 'dayGridMonth,timeGridWeek,listWeek',
         },
         buttonText: {
             today: 'Сегодня',
             month: 'Месяц',
             week:  'Неделя',
-            list:  'Список'
+            list:  'Список',
         },
-        events: function (info, successCallback, failureCallback) {
+        eventDisplay: 'block',
+        dayMaxEvents: 5,
+        moreLinkText: function (n) { return '+' + n + ' ещё'; },
+        noEventsText: 'Нет смен за этот период',
+
+        events: function (info, successCb, failureCb) {
             var pid = pointFilter.value || '0';
             fetch(
                 '/shifts/api/events'
-                + '?start=' + encodeURIComponent(info.startStr)
-                + '&end='   + encodeURIComponent(info.endStr)
+                + '?start='    + encodeURIComponent(info.startStr)
+                + '&end='      + encodeURIComponent(info.endStr)
                 + '&point_id=' + pid
             )
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
-            .then(successCallback)
+            .then(successCb)
             .catch(function (err) {
                 console.error('Events fetch error:', err);
-                failureCallback(err);
+                failureCb(err);
             });
         },
+
+        /* Click on event → show popup */
         eventClick: function (info) {
             var p = info.event.extendedProps;
-            var dateStr = info.event.startStr;
+            var dateStr = info.event.startStr.slice(0, 10);
+
+            // Format date nicely
+            var parts = dateStr.split('-');
+            var niceDateStr = parts[2] + '.' + parts[1] + '.' + parts[0];
 
             document.getElementById('popupEmployee').textContent = p.employee || '—';
-            document.getElementById('popupPoint').textContent     = p.point    || '—';
-            document.getElementById('popupDate').textContent      = dateStr;
+            document.getElementById('popupPoint').textContent    = p.point    || '—';
+            document.getElementById('popupDate').textContent     = niceDateStr;
 
-            var stateEl = document.getElementById('popupState');
-            stateEl.innerHTML = '<span style="color:'
-                + (stateColors[p.state] || '#6b7280') + ';font-weight:600">'
-                + (stateLabels[p.state] || p.state) + '</span>';
+            var kindBadgeEl = document.getElementById('popupKindBadge');
+            var stateRow    = document.getElementById('popupStateRow');
+            var durRow      = document.getElementById('popupDurationRow');
+            var notesRow    = document.getElementById('popupNotesRow');
+            var actionsEl   = document.getElementById('popupActions');
 
-            var dur = p.duration_minutes;
-            document.getElementById('popupDuration').textContent = dur
-                ? (Math.floor(dur/60) + ' ч ' + (dur % 60) + ' мин')
-                : '—';
+            if (p.kind === 'planned') {
+                kindBadgeEl.innerHTML = '<span class="popup-badge badge-planned">Запланирована</span>';
+                stateRow.style.display    = 'none';
+                durRow.style.display      = 'none';
+                notesRow.style.display    = p.notes ? '' : 'none';
+                document.getElementById('popupNotes').textContent = p.notes || '';
+                actionsEl.innerHTML = '<button class="btn btn-sm btn-outline-danger w-100" id="btnDeletePlanned">'
+                    + '<i class="bi bi-trash me-1"></i>Удалить бронь</button>';
+                document.getElementById('btnDeletePlanned').addEventListener('click', function () {
+                    deletePlanned(p.planned_id);
+                });
+            } else {
+                var stateEl = document.getElementById('popupState');
+                var dur     = p.duration_minutes;
+                var stateColor = p.state === 'open' ? '#1d4ed8' : '#065f46';
+                var stateBadgeClass = p.state === 'open' ? 'badge-open' : 'badge-closed';
 
-            backdrop.style.display = 'block';
-            popup.style.display    = 'block';
+                kindBadgeEl.innerHTML = '<span class="popup-badge ' + stateBadgeClass + '">'
+                    + (stateLabels[p.state] || p.state) + '</span>';
+                stateRow.style.display    = 'none'; // badge already shows state
+                durRow.style.display      = '';
+                notesRow.style.display    = 'none';
+                document.getElementById('popupDuration').textContent = dur
+                    ? (Math.floor(dur / 60) + ' ч ' + (dur % 60) + ' мин')
+                    : '—';
+                actionsEl.innerHTML = '';
+            }
+
+            popupBackdrop.style.display = 'block';
+            popup.style.display = 'block';
         },
-        dayMaxEvents: 4,
-        moreLinkText: function (n) { return '+' + n + ' ещё'; },
-        noEventsText: 'Нет смен за этот период',
+
+        /* Click on empty date → open book modal */
+        dateClick: function (info) {
+            openBook(info.dateStr.slice(0, 10));
+        },
+
         loading: function (isLoading) {
-            calendarEl.style.opacity = isLoading ? '0.5' : '1';
-        }
+            calendarEl.style.opacity = isLoading ? '0.55' : '1';
+            calendarEl.style.transition = 'opacity .2s';
+        },
     });
 
     calendar.render();
