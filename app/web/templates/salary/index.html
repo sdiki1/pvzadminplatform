@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Оклады и ставки — PVZ Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+.rate-input { width: 110px; }
+.employee-card { border: 1px solid #dee2e6; border-radius: 8px; margin-bottom: 1.25rem; }
+.employee-card-header {
+    background: #f8f9fa;
+    border-radius: 8px 8px 0 0;
+    padding: .75rem 1rem;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.point-badge-wb  { background:#5a2d8a; color:#fff; font-size:11px; padding:2px 8px; border-radius:20px; }
+.point-badge-ozon{ background:#005bff; color:#fff; font-size:11px; padding:2px 8px; border-radius:20px; }
+.rule-card { border-left: 4px solid #0d6efd; background:#f0f5ff; border-radius:6px; padding:14px 18px; margin-bottom:1rem; }
+.rule-card.ozon { border-left-color:#005bff; background:#f0f4ff; }
+.rule-card h6 { margin-bottom:.4rem; font-weight:600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-currency-ruble me-2"></i>Оклады и ставки</h1>
+</div>
+
+{# ─── Rules summary ─────────────────────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+    <div class="col-md-6">
+        <div class="rule-card">
+            <h6><span class="point-badge-wb me-2">WB</span> Wildberries — правила начисления</h6>
+            <ul class="mb-0 ps-3" style="font-size:13px">
+                <li><strong>База:</strong> ставка за смену или почасовая (если смена &lt; 8 ч)</li>
+                <li><strong>Приёмка:</strong> сумма в рублях из статистики — привязывается к конкретной смене</li>
+                <li><strong>Раздел смены:</strong> если в один день на одной точке несколько менеджеров — приёмка и выданные делятся пропорционально часам</li>
+                <li>
+                    <strong>Бонус за выдачу:</strong> за каждые полные
+                    <strong>{{ wb_issue_bonus_step }} шт.</strong> → +<strong>{{ wb_issue_bonus_amount }} ₽</strong>
+                    <br>
+                    <span class="text-muted">Пример: 121 шт → +100 ₽ &nbsp;|&nbsp; 199 шт → +100 ₽ &nbsp;|&nbsp; 200 шт → +200 ₽</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="rule-card ozon">
+            <h6><span class="point-badge-ozon me-2">OZON</span> Ozon — правило</h6>
+            <p class="mb-0" style="font-size:13px">
+                1 смена = <strong>1 900 ₽</strong> фиксированно.<br>
+                <span class="text-muted">Если у сотрудника задана ставка за смену — используется она.</span>
+            </p>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="rule-card" style="border-left-color:#198754; background:#f0fff4">
+            <h6><i class="bi bi-star me-1"></i>Бонусы менеджера (выплата 10-го)</h6>
+            <ul class="mb-0 ps-3" style="font-size:13px">
+                <li>Тип 1: +{{ manager_bonus_1 | int }} ₽ фикс.</li>
+                <li>Тип 2: +{{ manager_bonus_2 | int }} ₽ фикс.</li>
+                <li>Тип 3: +{{ manager_bonus_3_per_ticket | int }} ₽ × кол-во тикетов</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+{# ─── Employee list ──────────────────────────────────────────────────────── #}
+{% for user in users %}
+{% set user_assignments = assignments_by_user.get(user.id, []) %}
+<div class="employee-card" id="user-{{ user.id }}">
+    <div class="employee-card-header">
+        <div>
+            <strong>{{ user.full_name }}</strong>
+            {% if user.last_name %}<span class="text-muted ms-1" style="font-size:12px">(@{{ user.last_name }})</span>{% endif %}
+        </div>
+
+        {# ── Manager bonus type ── #}
+        <form method="post" action="/salary/employee/{{ user.id }}/bonus-type" class="d-flex align-items-center gap-2">
+            <label class="form-label mb-0 me-1 small text-muted">Тип бонуса:</label>
+            <select name="manager_bonus_type" class="form-select form-select-sm" style="width:220px">
+                <option value="">Нет</option>
+                <option value="1" {% if user.manager_bonus_type == 1 %}selected{% endif %}>Тип 1 — {{ manager_bonus_1 | int }} ₽ фикс.</option>
+                <option value="2" {% if user.manager_bonus_type == 2 %}selected{% endif %}>Тип 2 — {{ manager_bonus_2 | int }} ₽ фикс.</option>
+                <option value="3" {% if user.manager_bonus_type == 3 %}selected{% endif %}>Тип 3 — {{ manager_bonus_3_per_ticket | int }} ₽/тикет</option>
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-check2"></i>
+            </button>
+        </form>
+    </div>
+
+    <div class="p-3">
+        {% if user_assignments %}
+        <table class="table table-sm mb-2">
+            <thead>
+                <tr>
+                    <th>Точка</th>
+                    <th>Маркетплейс</th>
+                    <th>Ставка за смену, ₽</th>
+                    <th>Почасовая ставка, ₽<br><small class="text-muted fw-normal">(используется если смена &lt; 8 ч)</small></th>
+                    <th>Основная</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in user_assignments %}
+                {% set point = points_map.get(a.point_id) %}
+                <tr>
+                    <td>{{ point.name if point else '—' }}</td>
+                    <td>
+                        {% if point %}
+                            {% if point.brand.value == 'wb' %}
+                                <span class="point-badge-wb">WB</span>
+                            {% else %}
+                                <span class="point-badge-ozon">OZON</span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="post" action="/salary/assignment/{{ a.id }}" class="d-flex gap-1">
+                            <input type="hidden" name="hourly_rate_rub" value="{{ a.hourly_rate_rub if a.hourly_rate_rub is not none else '' }}">
+                            <input
+                                type="number"
+                                name="shift_rate_rub"
+                                value="{{ a.shift_rate_rub | float | round(2) }}"
+                                step="0.01" min="0"
+                                class="form-control form-control-sm rate-input"
+                                placeholder="0.00"
+                            >
+                            <button type="submit" class="btn btn-sm btn-outline-primary px-2" title="Сохранить">
+                                <i class="bi bi-check2"></i>
+                            </button>
+                        </form>
+                    </td>
+                    <td>
+                        <form method="post" action="/salary/assignment/{{ a.id }}" class="d-flex gap-1">
+                            <input type="hidden" name="shift_rate_rub" value="{{ a.shift_rate_rub | float | round(2) }}">
+                            <input
+                                type="number"
+                                name="hourly_rate_rub"
+                                value="{{ a.hourly_rate_rub | float | round(2) if a.hourly_rate_rub is not none else '' }}"
+                                step="0.01" min="0"
+                                class="form-control form-control-sm rate-input"
+                                placeholder="не задана"
+                            >
+                            <button type="submit" class="btn btn-sm btn-outline-primary px-2" title="Сохранить">
+                                <i class="bi bi-check2"></i>
+                            </button>
+                        </form>
+                    </td>
+                    <td class="text-center">
+                        {% if a.is_primary %}
+                            <span class="badge bg-success">Да</span>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form method="post" action="/salary/assignment/{{ a.id }}/remove" onsubmit="return confirm('Убрать назначение?')">
+                            <button type="submit" class="btn btn-sm btn-outline-danger px-2">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted small mb-2">Нет назначений на точки</p>
+        {% endif %}
+
+        {# ── Add assignment ── #}
+        <form method="post" action="/salary/employee/{{ user.id }}/add-assignment" class="d-flex align-items-center gap-2 mt-1">
+            <select name="point_id" class="form-select form-select-sm" style="max-width:260px" required>
+                <option value="">Добавить точку...</option>
+                {% set assigned_ids = user_assignments | map(attribute='point_id') | list %}
+                {% for p in points_map.values() | sort(attribute='name') %}
+                    {% if p.id not in assigned_ids %}
+                    <option value="{{ p.id }}">
+                        {{ p.name }}
+                        {% if p.brand.value == 'ozon' %}(OZON){% else %}(WB){% endif %}
+                    </option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-plus-lg"></i> Добавить
+            </button>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="text-muted text-center py-5">Нет активных сотрудников</div>
+{% endfor %}
+{% endblock %}
