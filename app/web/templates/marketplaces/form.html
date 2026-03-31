@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редактировать' if item else 'Добавить' }} маркетплейс — PVZ Admin{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">{{ 'Редактировать' if item else 'Добавить' }} маркетплейс</h4>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="card" style="max-width: 480px;">
+    <div class="card-body">
+        <form method="POST" action="{{ '/marketplaces/' ~ item.id ~ '/edit' if item else '/marketplaces/new' }}">
+            <div class="mb-3">
+                <label class="form-label">Код <span class="text-danger">*</span></label>
+                <input type="text" name="code" class="form-control" required
+                       value="{{ item.code if item else '' }}"
+                       {% if item %}readonly{% endif %}
+                       placeholder="wb, ozon, yandex …">
+                <div class="form-text">Маленькие латинские буквы, без пробелов. После создания не меняется.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Название <span class="text-danger">*</span></label>
+                <input type="text" name="name" class="form-control" required
+                       value="{{ item.name if item else '' }}"
+                       placeholder="Wildberries, Ozon …">
+            </div>
+            <div class="mb-3 form-check">
+                <input type="checkbox" name="is_active" class="form-check-input" id="isActive"
+                       {% if not item or item.is_active %}checked{% endif %}>
+                <label class="form-check-label" for="isActive">Активен</label>
+            </div>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+            <a href="/marketplaces" class="btn btn-secondary ms-2">Отмена</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
