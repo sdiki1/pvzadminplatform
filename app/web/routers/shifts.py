@@ -94,10 +94,23 @@ async def shift_events(
     point_id: int = 0,
 ):
     query = select(Shift)
-    if start:
-        query = query.where(Shift.shift_date >= start)
-    if end:
-        query = query.where(Shift.shift_date <= end)
+
+    # FullCalendar sends ISO strings like "2025-03-01T00:00:00+03:00" —
+    # extract just the date part for comparison with DATE columns
+    def _parse_date(s: str) -> date | None:
+        if not s:
+            return None
+        try:
+            return date.fromisoformat(s[:10])
+        except ValueError:
+            return None
+
+    d_start = _parse_date(start)
+    d_end = _parse_date(end)
+    if d_start:
+        query = query.where(Shift.shift_date >= d_start)
+    if d_end:
+        query = query.where(Shift.shift_date <= d_end)
     if point_id:
         query = query.where(Shift.point_id == point_id)
 
@@ -115,14 +128,23 @@ async def shift_events(
     for s in shifts:
         user = users_map.get(s.user_id)
         point = points_map.get(s.point_id)
+        state_val = s.state.value if hasattr(s.state, "value") else str(s.state)
+        duration_h = round(s.duration_minutes / 60, 1) if s.duration_minutes else None
+        title_parts = [user.full_name if user else "?"]
+        if point:
+            title_parts.append(point.short_name or point.name)
+        if duration_h:
+            title_parts.append(f"{duration_h}ч")
         events.append({
             "id": s.id,
-            "title": f"{user.full_name if user else '?'} - {point.name if point else '?'}",
+            "title": " · ".join(title_parts),
             "start": str(s.shift_date),
-            "color": colors.get(s.state.value if hasattr(s.state, 'value') else s.state, "#6b7280"),
+            "color": colors.get(state_val, "#6b7280"),
             "extendedProps": {
-                "state": s.state.value if hasattr(s.state, 'value') else s.state,
-                "duration": s.duration_minutes,
+                "state": state_val,
+                "duration_minutes": s.duration_minutes,
+                "point": point.name if point else None,
+                "employee": user.full_name if user else None,
             },
         })
 

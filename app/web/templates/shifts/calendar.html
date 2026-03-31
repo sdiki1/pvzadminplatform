@@ -3,57 +3,177 @@
 
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+<style>
+#calendar {
+    min-height: 600px;
+}
+.fc .fc-toolbar-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+.fc .fc-event {
+    cursor: pointer;
+    font-size: 11px;
+    padding: 1px 4px;
+    border: none;
+}
+.fc-event-closed { opacity: 0.75; }
+
+/* Shift detail popup */
+#shiftPopup {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    padding: 1.5rem;
+    min-width: 280px;
+    max-width: 360px;
+}
+#shiftPopupBackdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: rgba(0,0,0,0.25);
+}
+</style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1>Календарь смен</h1>
-    <div>
-        <select id="pointFilter" class="form-select form-select-sm d-inline-block" style="width: auto;">
+    <h1><i class="bi bi-calendar3 me-2"></i>Календарь смен</h1>
+    <div class="d-flex align-items-center gap-2">
+        <select id="pointFilter" class="form-select form-select-sm" style="width:auto; min-width:160px">
             <option value="0">Все точки</option>
             {% for p in points %}
-            <option value="{{ p.id }}">{{ p.name }}</option>
+            <option value="{{ p.id }}">{{ p.short_name or p.name }}</option>
             {% endfor %}
         </select>
-        <a href="/shifts" class="btn btn-outline-secondary btn-sm ms-2"><i class="bi bi-list"></i> Список</a>
+        <a href="/shifts" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-list"></i> Список
+        </a>
     </div>
 </div>
 
 <div class="form-card">
+    <div class="d-flex gap-3 mb-3" style="font-size:13px">
+        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#3b82f6;margin-right:4px"></span>Открытая смена</span>
+        <span><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:#10b981;margin-right:4px"></span>Закрытая смена</span>
+    </div>
     <div id="calendar"></div>
+</div>
+
+<!-- Shift detail popup -->
+<div id="shiftPopupBackdrop"></div>
+<div id="shiftPopup">
+    <div class="d-flex justify-content-between align-items-start mb-2">
+        <strong id="popupEmployee" style="font-size:15px"></strong>
+        <button type="button" class="btn-close btn-sm" id="popupClose"></button>
+    </div>
+    <table class="table table-sm mb-0">
+        <tbody>
+            <tr><td class="text-muted" style="width:110px">Точка</td><td id="popupPoint"></td></tr>
+            <tr><td class="text-muted">Дата</td><td id="popupDate"></td></tr>
+            <tr><td class="text-muted">Статус</td><td id="popupState"></td></tr>
+            <tr><td class="text-muted">Длительность</td><td id="popupDuration"></td></tr>
+        </tbody>
+    </table>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+{# FullCalendar 6 index.global already includes all locales #}
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+(function () {
     var calendarEl = document.getElementById('calendar');
     var pointFilter = document.getElementById('pointFilter');
+    var popup = document.getElementById('shiftPopup');
+    var backdrop = document.getElementById('shiftPopupBackdrop');
+
+    function closePopup() {
+        popup.style.display = 'none';
+        backdrop.style.display = 'none';
+    }
+    document.getElementById('popupClose').addEventListener('click', closePopup);
+    backdrop.addEventListener('click', closePopup);
+
+    var stateLabels = { open: 'Открыта', closed: 'Закрыта' };
+    var stateColors = { open: '#3b82f6', closed: '#10b981' };
 
     var calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         locale: 'ru',
         height: 'auto',
+        firstDay: 1,
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: 'dayGridMonth,timeGridWeek'
+            right: 'dayGridMonth,timeGridWeek,listWeek'
         },
-        events: function(info, successCallback, failureCallback) {
-            var pointId = pointFilter.value || '0';
-            fetch('/shifts/api/events?start=' + info.startStr + '&end=' + info.endStr + '&point_id=' + pointId)
-                .then(function(resp) { return resp.json(); })
-                .then(function(data) { successCallback(data); })
-                .catch(function(err) { failureCallback(err); });
+        buttonText: {
+            today: 'Сегодня',
+            month: 'Месяц',
+            week:  'Неделя',
+            list:  'Список'
+        },
+        events: function (info, successCallback, failureCallback) {
+            var pid = pointFilter.value || '0';
+            fetch(
+                '/shifts/api/events'
+                + '?start=' + encodeURIComponent(info.startStr)
+                + '&end='   + encodeURIComponent(info.endStr)
+                + '&point_id=' + pid
+            )
+            .then(function (r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
+            .then(successCallback)
+            .catch(function (err) {
+                console.error('Events fetch error:', err);
+                failureCallback(err);
+            });
+        },
+        eventClick: function (info) {
+            var p = info.event.extendedProps;
+            var dateStr = info.event.startStr;
+
+            document.getElementById('popupEmployee').textContent = p.employee || '—';
+            document.getElementById('popupPoint').textContent     = p.point    || '—';
+            document.getElementById('popupDate').textContent      = dateStr;
+
+            var stateEl = document.getElementById('popupState');
+            stateEl.innerHTML = '<span style="color:'
+                + (stateColors[p.state] || '#6b7280') + ';font-weight:600">'
+                + (stateLabels[p.state] || p.state) + '</span>';
+
+            var dur = p.duration_minutes;
+            document.getElementById('popupDuration').textContent = dur
+                ? (Math.floor(dur/60) + ' ч ' + (dur % 60) + ' мин')
+                : '—';
+
+            backdrop.style.display = 'block';
+            popup.style.display    = 'block';
+        },
+        dayMaxEvents: 4,
+        moreLinkText: function (n) { return '+' + n + ' ещё'; },
+        noEventsText: 'Нет смен за этот период',
+        loading: function (isLoading) {
+            calendarEl.style.opacity = isLoading ? '0.5' : '1';
         }
     });
 
     calendar.render();
 
-    pointFilter.addEventListener('change', function() {
+    pointFilter.addEventListener('change', function () {
         calendar.refetchEvents();
     });
-});
+}());
 </script>
 {% endblock %}
