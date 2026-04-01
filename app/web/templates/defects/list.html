@@ -64,10 +64,10 @@
             <tr>
                 <td>{{ item.incident_date.strftime('%d.%m.%Y') }}</td>
                 <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
-                <td>{{ item.incident_type }}</td>
+                <td>{{ incident_type_labels.get(item.incident_type, item.incident_type) }}</td>
                 <td>{{ item.barcode or '-' }}</td>
                 <td>{{ '%.2f'|format(item.amount) if item.amount else '-' }}</td>
-                <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                <td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td>
                 <td><a href="/defects/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
             </tr>
             {% else %}

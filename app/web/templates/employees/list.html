@@ -51,7 +51,7 @@
                 <td>{{ item.id }}</td>
                 <td><a href="/employees/{{ item.id }}">{{ item.full_name }}</a></td>
                 <td>{{ item.phone or '-' }}</td>
-                <td><span class="badge bg-secondary">{{ item.role.value if item.role.value is defined else item.role }}</span></td>
+                <td><span class="badge bg-secondary">{{ role_labels.get(item.role.value if item.role.value is defined else item.role, item.role.value if item.role.value is defined else item.role) }}</span></td>
                 <td>
                     {% if item.is_active %}
                     <span class="badge bg-success">Активен</span>

@@ -25,6 +25,7 @@ from app.db.models import (
     WebUser,
 )
 from app.web.deps import get_current_user_optional, get_db
+from app.web.routers.defects import INCIDENT_TYPE_LABELS, STATUS_LABELS as DEFECT_STATUS_LABELS
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -122,4 +123,7 @@ async def dashboard(
         "recent_defects": recent_defects,
         "points_map": points_map,
         "today": today,
+        "incident_type_labels": INCIDENT_TYPE_LABELS,
+        "defect_status_labels": DEFECT_STATUS_LABELS,
+        "sos_status_labels": {"open": "Открыто", "closed": "Закрыто", "resolved": "Решено", "unresolved": "Не решено", "on_hold": "На контроле", "cancelled": "Отменено"},
     })

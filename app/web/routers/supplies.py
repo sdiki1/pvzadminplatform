@@ -36,6 +36,15 @@ REQUEST_STATUSES = [
     ("cancelled", "Отменена"),
 ]
 
+REQUEST_STATUS_LABELS = dict(REQUEST_STATUSES)
+
+LINE_ITEM_STATUS_LABELS = {
+    "requested": "Запрошено",
+    "approved": "Подтверждено",
+    "delivered": "Выдано",
+    "cancelled": "Отменено",
+}
+
 
 @router.get("", response_class=HTMLResponse)
 async def list_supplies(
@@ -75,7 +84,8 @@ async def list_supplies(
         "points_map": points_map,
         "point_id": point_id,
         "status": status,
-        "statuses": REQUEST_STATUSES})
+        "statuses": REQUEST_STATUSES,
+        "request_status_labels": REQUEST_STATUS_LABELS})
 
 
 @router.get("/catalog", response_class=HTMLResponse)
@@ -187,7 +197,9 @@ async def supply_detail(
         "line_items": line_items,
         "supply_items_map": supply_items_map,
         "points_map": points_map,
-        "statuses": REQUEST_STATUSES})
+        "statuses": REQUEST_STATUSES,
+        "request_status_labels": REQUEST_STATUS_LABELS,
+        "line_item_status_labels": LINE_ITEM_STATUS_LABELS})
 
 
 @router.post("/catalog/new")

@@ -27,6 +27,8 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
+ROLE_LABELS = {"employee": "Сотрудник", "admin": "Администратор", "superadmin": "Суперадмин"}
+
 
 @router.get("", response_class=HTMLResponse)
 async def list_employees(
@@ -67,6 +69,7 @@ async def list_employees(
         "search": search,
         "role": role,
         "status": status,
+        "role_labels": ROLE_LABELS,
     })
 
 
@@ -195,6 +198,7 @@ async def employee_detail(
         "recent_shifts": recent_shifts,
         "payroll_items": payroll_items,
         "runs_map": runs_map,
+        "role_labels": ROLE_LABELS,
     })
 
 

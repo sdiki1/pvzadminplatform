@@ -72,6 +72,7 @@ async def list_shifts(
         "employee_id": employee_id,
         "date_from": date_from,
         "date_to": date_to,
+        "shift_state_labels": {"open": "Открыта", "closed": "Закрыта"},
     })
 
 

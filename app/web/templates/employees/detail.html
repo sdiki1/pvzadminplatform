@@ -18,7 +18,7 @@
                 <table class="table table-sm mb-0">
                     <tr><td class="text-muted" style="width:40%">ID</td><td>{{ item.id }}</td></tr>
                     <tr><td class="text-muted">Telegram ID</td><td>{{ item.telegram_id }}</td></tr>
-                    <tr><td class="text-muted">Роль</td><td>{{ item.role.value if item.role else '—' }}</td></tr>
+                    <tr><td class="text-muted">Роль</td><td>{{ role_labels.get(item.role.value, item.role.value) if item.role else '—' }}</td></tr>
                     <tr><td class="text-muted">Телефон</td><td>{{ item.phone or '—' }}</td></tr>
                     <tr>
                         <td class="text-muted">Статус</td>

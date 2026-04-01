@@ -17,10 +17,10 @@
             <table class="table table-sm table-borderless">
                 <tr><td class="text-muted" style="width:40%">Дата</td><td>{{ item.incident_date.strftime('%d.%m.%Y') }}</td></tr>
                 <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
-                <tr><td class="text-muted">Тип</td><td>{{ item.incident_type }}</td></tr>
-                <tr><td class="text-muted">Кто обнаружил</td><td>{{ item.detected_by_role }}</td></tr>
-                <tr><td class="text-muted">Этап</td><td>{{ item.detected_stage }}</td></tr>
-                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td></tr>
+                <tr><td class="text-muted">Тип</td><td>{{ incident_type_labels.get(item.incident_type, item.incident_type) }}</td></tr>
+                <tr><td class="text-muted">Кто обнаружил</td><td>{{ detected_by_labels.get(item.detected_by_role, item.detected_by_role) }}</td></tr>
+                <tr><td class="text-muted">Этап</td><td>{{ detected_stage_labels.get(item.detected_stage, item.detected_stage) }}</td></tr>
+                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td></tr>
             </table>
         </div>
     </div>

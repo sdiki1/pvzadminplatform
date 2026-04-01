@@ -112,7 +112,7 @@
                         <td>{{ item.incident_date.strftime('%d.%m') if item.incident_date else '—' }}</td>
                         <td>{{ points_map[item.point_id].name if points_map.get(item.point_id) else '—' }}</td>
                         <td class="text-truncate" style="max-width:200px">{{ (item.description or '')[:50] }}</td>
-                        <td><span class="badge bg-{{ 'danger' if item.status == 'open' else 'success' }}">{{ item.status }}</span></td>
+                        <td><span class="badge bg-{{ 'danger' if item.status == 'open' else 'success' }}">{{ sos_status_labels.get(item.status, item.status) }}</span></td>
                     </tr>
                     {% else %}
                     <tr><td colspan="4" class="text-muted text-center py-3">Нет записей</td></tr>
@@ -138,8 +138,8 @@
                     <tr>
                         <td>{{ item.incident_date.strftime('%d.%m') if item.incident_date else '—' }}</td>
                         <td>{{ points_map[item.point_id].name if points_map.get(item.point_id) else '—' }}</td>
-                        <td>{{ item.incident_type }}</td>
-                        <td><span class="badge bg-{{ 'warning' if item.status == 'new' else 'secondary' }}">{{ item.status }}</span></td>
+                        <td>{{ incident_type_labels.get(item.incident_type, item.incident_type) }}</td>
+                        <td><span class="badge bg-{{ 'warning' if item.status == 'new' else 'secondary' }}">{{ defect_status_labels.get(item.status, item.status) }}</span></td>
                     </tr>
                     {% else %}
                     <tr><td colspan="4" class="text-muted text-center py-3">Нет записей</td></tr>

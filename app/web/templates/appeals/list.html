@@ -48,11 +48,11 @@
             <tr>
                 <td>{{ item.case_date.strftime('%d.%m') }}</td>
                 <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
-                <td>{{ item.appeal_type }}</td>
+                <td>{{ appeal_type_labels.get(item.appeal_type, item.appeal_type) }}</td>
                 <td>{{ item.barcode or '-' }}</td>
                 <td>{{ item.ticket_number or '-' }}</td>
                 <td>{{ '%.2f'|format(item.amount) if item.amount else '-' }}</td>
-                <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                <td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td>
                 <td>{{ users_map.get(item.assigned_manager_employee_id).full_name if item.assigned_manager_employee_id and users_map.get(item.assigned_manager_employee_id) else (item.assigned_manager_raw or '-') }}</td>
                 <td>{% if item.charge_to_manager %}<span class="badge bg-danger">Да</span>{% else %}-{% endif %}</td>
                 <td><a href="/appeals/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>

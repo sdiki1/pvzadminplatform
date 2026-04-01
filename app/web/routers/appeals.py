@@ -32,6 +32,9 @@ APPEAL_STATUSES = [
     ("closed", "Закрыто"),
 ]
 
+APPEAL_TYPE_LABELS = dict(APPEAL_TYPES)
+APPEAL_STATUS_LABELS = dict(APPEAL_STATUSES)
+
 
 @router.get("", response_class=HTMLResponse)
 async def list_appeals(
@@ -95,7 +98,9 @@ async def list_appeals(
         "date_to": date_to,
         "search": search,
         "appeal_types": APPEAL_TYPES,
-        "statuses": APPEAL_STATUSES})
+        "statuses": APPEAL_STATUSES,
+        "appeal_type_labels": APPEAL_TYPE_LABELS,
+        "status_labels": APPEAL_STATUS_LABELS})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -117,6 +122,8 @@ async def new_appeal(
         "employees": employees,
         "appeal_types": APPEAL_TYPES,
         "statuses": APPEAL_STATUSES,
+        "appeal_type_labels": APPEAL_TYPE_LABELS,
+        "status_labels": APPEAL_STATUS_LABELS,
         "error": None})
 
 
@@ -187,7 +194,9 @@ async def appeal_detail(
         "points_map": points_map,
         "users_map": users_map,
         "appeal_types": APPEAL_TYPES,
-        "statuses": APPEAL_STATUSES})
+        "statuses": APPEAL_STATUSES,
+        "appeal_type_labels": APPEAL_TYPE_LABELS,
+        "status_labels": APPEAL_STATUS_LABELS})
 
 
 @router.post("/{appeal_id}/feedback")

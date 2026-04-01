@@ -60,7 +60,7 @@
                 <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
                 <td class="text-truncate" style="max-width:300px">{{ item.description[:80] }}{% if item.description|length > 80 %}...{% endif %}</td>
                 <td>{{ '%.2f'|format(item.total_amount) if item.total_amount else '-' }}</td>
-                <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                <td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td>
                 <td><a href="/sos/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
             </tr>
             {% else %}

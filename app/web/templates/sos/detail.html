@@ -17,7 +17,7 @@
             <table class="table table-sm table-borderless">
                 <tr><td class="text-muted" style="width:40%">Дата</td><td>{{ item.incident_date.strftime('%d.%m.%Y') }}</td></tr>
                 <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
-                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td></tr>
+                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td></tr>
                 <tr><td class="text-muted">Клиент</td><td>{{ item.client_name or '-' }}</td></tr>
                 <tr><td class="text-muted">Телефон</td><td>{{ item.client_phone or '-' }}</td></tr>
                 <tr><td class="text-muted">Ячейка</td><td>{{ item.cell_code or '-' }}</td></tr>

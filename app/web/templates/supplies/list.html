@@ -44,7 +44,7 @@
                 <td>{{ item.id }}</td>
                 <td>{{ item.request_date.strftime('%d.%m.%Y') }}</td>
                 <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
-                <td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td>
+                <td><span class="badge badge-status-{{ item.status }}">{{ request_status_labels.get(item.status, item.status) }}</span></td>
                 <td><a href="/supplies/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
             </tr>
             {% else %}

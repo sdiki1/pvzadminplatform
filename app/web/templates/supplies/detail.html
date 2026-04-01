@@ -14,7 +14,7 @@
             <table class="table table-sm table-borderless">
                 <tr><td class="text-muted">Дата</td><td>{{ item.request_date.strftime('%d.%m.%Y') }}</td></tr>
                 <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
-                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ item.status }}</span></td></tr>
+                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ request_status_labels.get(item.status, item.status) }}</span></td></tr>
                 <tr><td class="text-muted">Комментарий</td><td>{{ item.comment or '-' }}</td></tr>
             </table>
         </div>
@@ -31,7 +31,7 @@
                         <td>{{ line.requested_qty or '-' }}</td>
                         <td>{{ line.approved_qty or '-' }}</td>
                         <td>{{ line.delivered_qty or '-' }}</td>
-                        <td><span class="badge badge-status-{{ line.item_status }}">{{ line.item_status }}</span></td>
+                        <td><span class="badge badge-status-{{ line.item_status }}">{{ line_item_status_labels.get(line.item_status, line.item_status) }}</span></td>
                     </tr>
                     {% else %}
                     <tr><td colspan="5" class="text-center text-muted py-3">Нет позиций</td></tr>

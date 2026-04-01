@@ -24,6 +24,8 @@ SOS_STATUSES = [
     ("on_hold", "На контроле"),
 ]
 
+STATUS_LABELS = dict(SOS_STATUSES)
+
 
 @router.get("", response_class=HTMLResponse)
 async def list_sos(
@@ -78,7 +80,8 @@ async def list_sos(
         "date_from": date_from,
         "date_to": date_to,
         "search": search,
-        "statuses": SOS_STATUSES})
+        "statuses": SOS_STATUSES,
+        "status_labels": STATUS_LABELS})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -99,6 +102,7 @@ async def new_sos(
         "points": points,
         "employees": employees,
         "statuses": SOS_STATUSES,
+        "status_labels": STATUS_LABELS,
         "error": None})
 
 
@@ -159,7 +163,8 @@ async def sos_detail(
         "item": item,
         "points_map": points_map,
         "users_map": users_map,
-        "statuses": SOS_STATUSES})
+        "statuses": SOS_STATUSES,
+        "status_labels": STATUS_LABELS})
 
 
 @router.get("/{sos_id}/edit", response_class=HTMLResponse)
@@ -186,6 +191,7 @@ async def edit_sos(
         "points": points,
         "employees": employees,
         "statuses": SOS_STATUSES,
+        "status_labels": STATUS_LABELS,
         "error": None})
 
 

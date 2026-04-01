@@ -18,6 +18,17 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/geofence", tags=["geofence"])
 
+APPROVAL_STATUS_LABELS = {
+    "approved": "Одобрено",
+    "pending": "На рассмотрении",
+    "rejected": "Отклонено",
+}
+
+GEO_STATUS_LABELS = {
+    "ok": "В радиусе",
+    "outside": "Вне радиуса",
+}
+
 
 @router.get("", response_class=HTMLResponse)
 async def list_geofence_exceptions(
@@ -52,6 +63,8 @@ async def list_geofence_exceptions(
         "users_map": users_map,
         "points_map": points_map,
         "status": status,
+        "approval_status_labels": APPROVAL_STATUS_LABELS,
+        "geo_status_labels": GEO_STATUS_LABELS,
     })
 
 

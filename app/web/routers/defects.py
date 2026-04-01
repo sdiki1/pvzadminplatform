@@ -50,6 +50,20 @@ STATUSES = [
     ("cancelled", "Отменено"),
 ]
 
+# Lookup dicts — passed to every template for label resolution
+INCIDENT_TYPE_LABELS = dict(INCIDENT_TYPES)
+DETECTED_BY_LABELS = dict(DETECTED_BY)
+DETECTED_STAGE_LABELS = dict(DETECTED_STAGES)
+STATUS_LABELS = dict(STATUSES)
+
+def _labels() -> dict:
+    return {
+        "incident_type_labels": INCIDENT_TYPE_LABELS,
+        "detected_by_labels": DETECTED_BY_LABELS,
+        "detected_stage_labels": DETECTED_STAGE_LABELS,
+        "status_labels": STATUS_LABELS,
+    }
+
 
 @router.get("", response_class=HTMLResponse)
 async def list_defects(
@@ -110,7 +124,8 @@ async def list_defects(
         "date_to": date_to,
         "search": search,
         "incident_types": INCIDENT_TYPES,
-        "statuses": STATUSES})
+        "statuses": STATUSES,
+        **_labels()})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -134,7 +149,8 @@ async def new_defect(
         "detected_by": DETECTED_BY,
         "detected_stages": DETECTED_STAGES,
         "statuses": STATUSES,
-        "error": None})
+        "error": None,
+        **_labels()})
 
 
 @router.post("/new")
@@ -200,7 +216,8 @@ async def defect_detail(
         "incident_types": INCIDENT_TYPES,
         "detected_by": DETECTED_BY,
         "detected_stages": DETECTED_STAGES,
-        "statuses": STATUSES})
+        "statuses": STATUSES,
+        **_labels()})
 
 
 @router.get("/{defect_id}/edit", response_class=HTMLResponse)
@@ -230,7 +247,8 @@ async def edit_defect(
         "detected_by": DETECTED_BY,
         "detected_stages": DETECTED_STAGES,
         "statuses": STATUSES,
-        "error": None})
+        "error": None,
+        **_labels()})
 
 
 @router.post("/{defect_id}/edit")
