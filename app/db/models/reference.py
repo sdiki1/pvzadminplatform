@@ -132,3 +132,22 @@ class DailyStatMetricValue(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class ReceptionStat(Base):
+    """Per-point, per-day reception statistics (Товаров отдали / Клиентов / Приёмка ₽)."""
+    __tablename__ = "reception_stats"
+    __table_args__ = (UniqueConstraint("point_id", "stat_date", name="uq_reception_point_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    point_id: Mapped[int] = mapped_column(
+        ForeignKey("points.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    stat_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    items_given: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    clients_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    acceptance_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 2), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )

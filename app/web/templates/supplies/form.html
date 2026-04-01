@@ -1,43 +1,248 @@
 {% extends "base.html" %}
-{% block title %}Новая заявка - PVZ Admin{% endblock %}
+{% block title %}Новая заявка — Расходники{% endblock %}
+
+{% block extra_css %}
+<style>
+.supply-item-card {
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: border-color .15s, background .15s;
+    cursor: pointer;
+    user-select: none;
+    background: #fff;
+}
+.supply-item-card:hover { border-color: #94a3b8; }
+.supply-item-card.ordered {
+    border-color: #f59e0b;
+    background: #fffbeb;
+}
+.supply-item-card.all-good {
+    border-color: #10b981;
+    background: #f0fdf4;
+}
+.supply-item-toggle {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 2px solid #cbd5e1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; flex-shrink: 0;
+    transition: all .15s;
+}
+.supply-item-card.ordered  .supply-item-toggle { border-color: #f59e0b; background: #f59e0b; color: #fff; }
+.supply-item-card.all-good .supply-item-toggle { border-color: #10b981; background: #10b981; color: #fff; }
+.supply-item-name { font-weight: 600; font-size: 14px; }
+.supply-item-unit { font-size: 12px; color: #64748b; }
+.supply-item-qty {
+    margin-left: auto;
+    display: none;
+}
+.supply-item-card.ordered .supply-item-qty { display: flex; align-items: center; gap: 6px; }
+.supply-item-qty input {
+    width: 80px;
+    text-align: center;
+}
+.all-good-btn {
+    border: 2px solid #10b981;
+    color: #059669;
+    font-weight: 600;
+    padding: 10px 20px;
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.all-good-btn.active, .all-good-btn:hover {
+    background: #10b981;
+    color: #fff;
+}
+.section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; margin-bottom: 8px; }
+</style>
+{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1>Новая заявка на расходники</h1>
+    <h1><i class="bi bi-cart3 me-2"></i>Заявка на расходники</h1>
     <a href="/supplies" class="btn btn-outline-secondary btn-sm">Назад</a>
 </div>
 
-<div class="form-card">
-    <form method="post" action="/supplies/new">
-        <div class="row g-3">
-            <div class="col-md-4">
-                <label class="form-label">Точка <span class="text-danger">*</span></label>
-                <select class="form-select" name="point_id" required>
-                    <option value="">Выберите</option>
-                    {% for p in points %}
-                    <option value="{{ p.id }}">{{ p.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">Дата заявки <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" name="request_date" required>
-            </div>
-            <div class="col-12"><hr><h6>Позиции</h6></div>
-            {% for si in supply_items %}
-            <div class="col-md-4">
-                <label class="form-label small">{{ si.name }} ({{ si.unit }})</label>
-                <input type="number" step="0.01" class="form-control form-control-sm" name="qty_{{ si.id }}" placeholder="0">
+<form method="post" action="/supplies/new" id="supplyForm">
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <label class="form-label fw-semibold">Точка <span class="text-danger">*</span></label>
+            <select class="form-select" name="point_id" required>
+                <option value="">Выберите точку</option>
+                {% for p in points %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label fw-semibold">Дата заявки <span class="text-danger">*</span></label>
+            <input type="date" class="form-control" name="request_date"
+                   value="{{ today }}" required>
+        </div>
+    </div>
+
+    {# ── All-good shortcut ── #}
+    <div class="mb-4">
+        <div class="section-title">Статус расходников</div>
+        <button type="button" class="all-good-btn" id="allGoodBtn" onclick="toggleAllGood()">
+            <i class="bi bi-check-circle-fill"></i> Всё есть — ничего не нужно заказывать
+        </button>
+        <input type="hidden" name="all_good" id="allGoodInput" value="">
+    </div>
+
+    {# ── Items per category ── #}
+    {% set categories = supply_items | map(attribute='category') | unique | list %}
+    {% for cat in categories %}
+    <div class="mb-3">
+        <div class="section-title">{{ cat or 'Без категории' }}</div>
+        <div class="row g-2">
+            {% for si in supply_items if si.category == cat %}
+            <div class="col-md-4 col-sm-6">
+                <div class="supply-item-card all-good" id="card_{{ si.id }}"
+                     onclick="toggleItem({{ si.id }})">
+                    <div class="supply-item-toggle" id="toggle_{{ si.id }}">
+                        <i class="bi bi-check2"></i>
+                    </div>
+                    <div>
+                        <div class="supply-item-name">{{ si.name }}</div>
+                        <div class="supply-item-unit">{{ si.unit }}</div>
+                    </div>
+                    <div class="supply-item-qty">
+                        <input type="number" step="0.01" min="0"
+                               name="qty_{{ si.id }}"
+                               id="qty_{{ si.id }}"
+                               class="form-control form-control-sm"
+                               placeholder="Кол-во"
+                               onclick="event.stopPropagation()">
+                        <span class="small text-muted">{{ si.unit }}</span>
+                    </div>
+                </div>
             </div>
             {% endfor %}
-            <div class="col-12">
-                <label class="form-label">Комментарий</label>
-                <textarea class="form-control" name="comment" rows="2"></textarea>
+        </div>
+    </div>
+    {% endfor %}
+
+    {# Items with no category #}
+    {% set no_cat = supply_items | selectattr('category', 'none') | list %}
+    {% if no_cat %}
+    <div class="mb-3">
+        <div class="section-title">Прочее</div>
+        <div class="row g-2">
+            {% for si in no_cat %}
+            <div class="col-md-4 col-sm-6">
+                <div class="supply-item-card all-good" id="card_{{ si.id }}"
+                     onclick="toggleItem({{ si.id }})">
+                    <div class="supply-item-toggle" id="toggle_{{ si.id }}">
+                        <i class="bi bi-check2"></i>
+                    </div>
+                    <div>
+                        <div class="supply-item-name">{{ si.name }}</div>
+                        <div class="supply-item-unit">{{ si.unit }}</div>
+                    </div>
+                    <div class="supply-item-qty">
+                        <input type="number" step="0.01" min="0"
+                               name="qty_{{ si.id }}"
+                               id="qty_{{ si.id }}"
+                               class="form-control form-control-sm"
+                               placeholder="Кол-во"
+                               onclick="event.stopPropagation()">
+                        <span class="small text-muted">{{ si.unit }}</span>
+                    </div>
+                </div>
             </div>
+            {% endfor %}
         </div>
-        <div class="mt-4">
-            <button type="submit" class="btn btn-primary">Создать заявку</button>
-        </div>
-    </form>
-</div>
+    </div>
+    {% endif %}
+
+    <div class="mb-3 mt-2">
+        <label class="form-label fw-semibold">Комментарий</label>
+        <textarea class="form-control" name="comment" rows="2" placeholder="Дополнительно..."></textarea>
+    </div>
+
+    <div id="summaryBlock" class="alert alert-warning mb-3" style="display:none">
+        <strong>Нужно заказать:</strong> <span id="summaryList"></span>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-lg">
+        <i class="bi bi-send me-2"></i>Отправить заявку
+    </button>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var orderedItems = new Set();
+var itemNames = {};
+
+{% for si in supply_items %}
+itemNames[{{ si.id }}] = '{{ si.name | replace("'", "\\'") }}';
+{% endfor %}
+
+function toggleItem(id) {
+    var card = document.getElementById('card_' + id);
+    if (orderedItems.has(id)) {
+        // uncheck → all-good
+        orderedItems.delete(id);
+        card.classList.remove('ordered');
+        card.classList.add('all-good');
+        card.querySelector('.supply-item-toggle').innerHTML = '<i class="bi bi-check2"></i>';
+        var qty = document.getElementById('qty_' + id);
+        if (qty) qty.value = '';
+    } else {
+        // check → ordered
+        orderedItems.add(id);
+        card.classList.remove('all-good');
+        card.classList.add('ordered');
+        card.querySelector('.supply-item-toggle').innerHTML = '<i class="bi bi-cart3"></i>';
+        // disable all-good
+        document.getElementById('allGoodBtn').classList.remove('active');
+        document.getElementById('allGoodInput').value = '';
+    }
+    updateSummary();
+}
+
+function toggleAllGood() {
+    var isActive = document.getElementById('allGoodBtn').classList.contains('active');
+    if (isActive) {
+        document.getElementById('allGoodBtn').classList.remove('active');
+        document.getElementById('allGoodInput').value = '';
+    } else {
+        // mark all as all-good
+        orderedItems.forEach(function(id) {
+            var card = document.getElementById('card_' + id);
+            card.classList.remove('ordered');
+            card.classList.add('all-good');
+            card.querySelector('.supply-item-toggle').innerHTML = '<i class="bi bi-check2"></i>';
+        });
+        orderedItems.clear();
+        document.getElementById('allGoodBtn').classList.add('active');
+        document.getElementById('allGoodInput').value = '1';
+        updateSummary();
+    }
+}
+
+function updateSummary() {
+    var block = document.getElementById('summaryBlock');
+    var list  = document.getElementById('summaryList');
+    if (orderedItems.size === 0) {
+        block.style.display = 'none';
+    } else {
+        var names = [];
+        orderedItems.forEach(function(id) { names.push(itemNames[id]); });
+        list.textContent = names.join(', ');
+        block.style.display = '';
+    }
+}
+</script>
 {% endblock %}

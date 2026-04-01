@@ -43,6 +43,7 @@ from app.db.models.reference import (
     EmployeeAlias,
     Marketplace,
     PointSettings,
+    ReceptionStat,
 )
 
 # Incident models
@@ -119,6 +120,7 @@ __all__ = [
     "DailyStatReport",
     "DailyStatMetricDef",
     "DailyStatMetricValue",
+    "ReceptionStat",
     # Incidents
     "DefectIncident",
     "SOSIncident",

@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}Статистика приёмки - PVZ Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+.reception-table-wrap {
+    overflow-x: auto;
+    border-radius: 8px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.07);
+}
+.reception-table {
+    border-collapse: collapse;
+    min-width: 100%;
+    background: #fff;
+    font-size: 13px;
+}
+.reception-table th, .reception-table td {
+    border: 1px solid #e2e8f0;
+    padding: 0;
+    min-width: 52px;
+    text-align: center;
+    vertical-align: middle;
+}
+.reception-table .row-label {
+    min-width: 160px;
+    text-align: left;
+    padding: 8px 12px;
+    background: #f8fafc;
+    font-weight: 600;
+    white-space: nowrap;
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    border-right: 2px solid #cbd5e1;
+}
+.reception-table thead th {
+    background: #1e293b;
+    color: #fff;
+    font-weight: 600;
+    padding: 8px 4px;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+}
+.reception-table thead th.row-label {
+    background: #0f172a;
+    z-index: 4;
+}
+.reception-table td.day-today {
+    background: #eff6ff;
+}
+.reception-table .cell-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    width: 100%;
+    text-align: center;
+    padding: 8px 4px;
+    font-size: 13px;
+    min-width: 48px;
+    cursor: pointer;
+}
+.reception-table .cell-input:focus {
+    background: #fef9c3;
+    box-shadow: inset 0 0 0 2px #f59e0b;
+    border-radius: 2px;
+}
+.reception-table .cell-input.saving { background: #dcfce7; }
+.reception-table .cell-input.error  { background: #fee2e2; }
+.row-items    .row-label { color: #1d4ed8; }
+.row-clients  .row-label { color: #065f46; }
+.row-accept   .row-label { color: #7c3aed; }
+.month-nav { display: flex; align-items: center; gap: 1rem; }
+.sum-row td { background: #f0fdf4; font-weight: 700; color: #166534; }
+.sum-row .row-label { background: #f0fdf4; color: #166534; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-table me-2"></i>Статистика приёмки</h1>
+</div>
+
+{# ── Controls ── #}
+<div class="d-flex flex-wrap gap-3 align-items-end mb-3">
+    <div>
+        <label class="form-label small fw-semibold mb-1">Точка</label>
+        <select id="pointSelect" class="form-select form-select-sm" style="min-width:200px"
+                onchange="navigate()">
+            {% for p in points %}
+            <option value="{{ p.id }}" {% if p.id == point_id %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="month-nav">
+        <a href="/reception?point_id={{ point_id }}&year={{ prev_year }}&month={{ prev_month }}"
+           class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-left"></i></a>
+        <span class="fw-semibold" style="min-width:140px;text-align:center">{{ month_name }} {{ year }}</span>
+        <a href="/reception?point_id={{ point_id }}&year={{ next_year }}&month={{ next_month }}"
+           class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-right"></i></a>
+    </div>
+    <div id="saveStatus" class="small text-muted" style="min-width:120px"></div>
+</div>
+
+{# ── Table ── #}
+<div class="reception-table-wrap">
+<table class="reception-table">
+    <thead>
+        <tr>
+            <th class="row-label">Показатель</th>
+            {% for cell in grid %}
+            <th {% if cell.date.strftime('%Y-%m-%d') == today_str %}class="day-today"{% endif %}>
+                {{ cell.day }}<br>
+                <span style="font-weight:400;font-size:10px;opacity:.7">{{ cell.date.strftime('%a') }}</span>
+            </th>
+            {% endfor %}
+            <th style="min-width:70px;background:#1e293b">Итого</th>
+        </tr>
+    </thead>
+    <tbody>
+        {# Row 1: items_given #}
+        <tr class="row-items">
+            <td class="row-label"><i class="bi bi-box-seam me-1"></i>Товаров отдали</td>
+            {% for cell in grid %}
+            <td {% if cell.date.strftime('%Y-%m-%d') == today_str %}class="day-today"{% endif %}>
+                <input class="cell-input" type="text" inputmode="numeric"
+                    data-field="items_given"
+                    data-date="{{ cell.date.strftime('%Y-%m-%d') }}"
+                    data-point="{{ point_id }}"
+                    value="{{ cell.items_given if cell.items_given is not none else '' }}"
+                    placeholder="—">
+            </td>
+            {% endfor %}
+            <td class="sum-cell" id="sum_items_given" style="font-weight:700;background:#eff6ff">
+                {{ grid | selectattr('items_given', 'ne', none) | map(attribute='items_given') | sum }}
+            </td>
+        </tr>
+        {# Row 2: clients_count #}
+        <tr class="row-clients">
+            <td class="row-label"><i class="bi bi-people me-1"></i>Клиентов в день</td>
+            {% for cell in grid %}
+            <td {% if cell.date.strftime('%Y-%m-%d') == today_str %}class="day-today"{% endif %}>
+                <input class="cell-input" type="text" inputmode="numeric"
+                    data-field="clients_count"
+                    data-date="{{ cell.date.strftime('%Y-%m-%d') }}"
+                    data-point="{{ point_id }}"
+                    value="{{ cell.clients_count if cell.clients_count is not none else '' }}"
+                    placeholder="—">
+            </td>
+            {% endfor %}
+            <td id="sum_clients_count" style="font-weight:700;background:#eff6ff">
+                {{ grid | selectattr('clients_count', 'ne', none) | map(attribute='clients_count') | sum }}
+            </td>
+        </tr>
+        {# Row 3: acceptance_amount #}
+        <tr class="row-accept">
+            <td class="row-label"><i class="bi bi-currency-ruble me-1"></i>Приёмка, ₽</td>
+            {% for cell in grid %}
+            <td {% if cell.date.strftime('%Y-%m-%d') == today_str %}class="day-today"{% endif %}>
+                <input class="cell-input" type="text" inputmode="decimal"
+                    data-field="acceptance_amount"
+                    data-date="{{ cell.date.strftime('%Y-%m-%d') }}"
+                    data-point="{{ point_id }}"
+                    value="{{ '%.2f' % cell.acceptance_amount if cell.acceptance_amount is not none else '' }}"
+                    placeholder="—">
+            </td>
+            {% endfor %}
+            <td id="sum_acceptance_amount" style="font-weight:700;background:#fdf4ff">
+                {% set total = namespace(v=0) %}
+                {% for cell in grid %}{% if cell.acceptance_amount is not none %}{% set total.v = total.v + cell.acceptance_amount %}{% endif %}{% endfor %}
+                {{ '%.2f' % total.v }}
+            </td>
+        </tr>
+    </tbody>
+</table>
+</div>
+
+<div class="text-muted small mt-2">
+    <i class="bi bi-info-circle me-1"></i>Кликните на ячейку для редактирования — значение сохраняется автоматически при выходе из поля.
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var TODAY = '{{ today_str }}';
+var statusEl = document.getElementById('saveStatus');
+
+function navigate() {
+    var pid = document.getElementById('pointSelect').value;
+    window.location.href = '/reception?point_id=' + pid + '&year={{ year }}&month={{ month }}';
+}
+
+function recalcSums() {
+    ['items_given', 'clients_count'].forEach(function(field) {
+        var inputs = document.querySelectorAll('[data-field="' + field + '"]');
+        var sum = 0;
+        inputs.forEach(function(el) { sum += parseInt(el.value || '0') || 0; });
+        var el = document.getElementById('sum_' + field);
+        if (el) el.textContent = sum || '';
+    });
+    var inputs = document.querySelectorAll('[data-field="acceptance_amount"]');
+    var sum = 0;
+    inputs.forEach(function(el) { sum += parseFloat(el.value.replace(',','.') || '0') || 0; });
+    var el = document.getElementById('sum_acceptance_amount');
+    if (el) el.textContent = sum ? sum.toFixed(2) : '';
+}
+
+document.querySelectorAll('.cell-input').forEach(function(input) {
+    input.addEventListener('focus', function() { this.select(); });
+    input.addEventListener('blur', function() {
+        var el = this;
+        var field  = el.dataset.field;
+        var d      = el.dataset.date;
+        var pid    = parseInt(el.dataset.point);
+        var val    = el.value.trim();
+
+        statusEl.textContent = 'Сохранение...';
+        el.classList.add('saving');
+
+        fetch('/reception/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({point_id: pid, date: d, field: field, value: val}),
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            el.classList.remove('saving');
+            if (data.ok) {
+                statusEl.textContent = '✓ Сохранено';
+                setTimeout(function() { statusEl.textContent = ''; }, 2000);
+                recalcSums();
+            } else {
+                el.classList.add('error');
+                statusEl.textContent = '✗ Ошибка: ' + (data.error || '');
+                setTimeout(function() { el.classList.remove('error'); statusEl.textContent = ''; }, 3000);
+            }
+        })
+        .catch(function() {
+            el.classList.remove('saving');
+            el.classList.add('error');
+            statusEl.textContent = '✗ Сетевая ошибка';
+            setTimeout(function() { el.classList.remove('error'); statusEl.textContent = ''; }, 3000);
+        });
+    });
+
+    // Enter → move to next input in same row
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            var all = Array.from(document.querySelectorAll('.cell-input[data-field="' + this.dataset.field + '"]'));
+            var idx = all.indexOf(this);
+            if (idx < all.length - 1) all[idx + 1].focus();
+            else this.blur();
+        }
+    });
+});
+</script>
+{% endblock %}

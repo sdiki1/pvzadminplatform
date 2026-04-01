@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -8,12 +9,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from decimal import Decimal, InvalidOperation
+
 from app.db.models import (
     Point,
     SupplyItem,
     SupplyRequestHeader,
     SupplyRequestItem,
-    User,
     WebUser,
 )
 from app.web.deps import get_current_user, get_db
@@ -108,6 +110,7 @@ async def new_supply_request(
         "points": points,
         "supply_items": supply_items,
         "statuses": REQUEST_STATUSES,
+        "today": date.today().strftime("%Y-%m-%d"),
         "error": None})
 
 
@@ -119,32 +122,37 @@ async def create_supply_request(
 ):
     form = await request.form()
 
+    all_good = form.get("all_good", "") == "1"
+
     header = SupplyRequestHeader(
         point_id=int(form["point_id"]),
-        request_date=form["request_date"],
-        status="new",
-        comment=form.get("comment", "").strip() or None,
+        request_date=date.fromisoformat(str(form["request_date"])),
+        status="delivered" if all_good else "new",
+        comment=form.get("comment", "").strip() or ("Всё есть" if all_good else None),
         created_by_user_id=current_user.id,
     )
     db.add(header)
     await db.flush()
 
-    # Process line items
-    items_result = await db.execute(select(SupplyItem).where(SupplyItem.is_active == True))
-    for si in items_result.scalars().all():
-        qty = form.get(f"qty_{si.id}", "").strip()
-        if qty:
-            try:
-                qty_val = float(qty)
-            except ValueError:
-                continue
-            line = SupplyRequestItem(
-                request_id=header.id,
-                supply_item_id=si.id,
-                requested_qty=qty_val,
-                item_status="requested",
-            )
-            db.add(line)
+    # Process line items — only when specific items were marked as ordered
+    if not all_good:
+        items_result = await db.execute(select(SupplyItem).where(SupplyItem.is_active == True))
+        for si in items_result.scalars().all():
+            qty_raw = form.get(f"qty_{si.id}", "").strip()
+            # Item is "ordered" if qty was filled OR if the qty field was submitted
+            # (the form only shows qty for items toggled as ordered)
+            if qty_raw:
+                try:
+                    qty_val = float(qty_raw)
+                except ValueError:
+                    qty_val = None
+                line = SupplyRequestItem(
+                    request_id=header.id,
+                    supply_item_id=si.id,
+                    requested_qty=qty_val,
+                    item_status="requested",
+                )
+                db.add(line)
 
     await db.commit()
     return RedirectResponse(url="/supplies", status_code=302)
@@ -180,3 +188,47 @@ async def supply_detail(
         "supply_items_map": supply_items_map,
         "points_map": points_map,
         "statuses": REQUEST_STATUSES})
+
+
+@router.post("/catalog/new")
+async def create_catalog_item(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    form = await request.form()
+    name = str(form.get("name", "")).strip()
+    if not name:
+        return RedirectResponse(url="/supplies/catalog", status_code=302)
+
+    min_qty_raw = str(form.get("min_qty", "")).strip()
+    try:
+        min_qty = Decimal(min_qty_raw) if min_qty_raw else None
+    except InvalidOperation:
+        min_qty = None
+
+    item = SupplyItem(
+        name=name,
+        category=str(form.get("category", "")).strip() or None,
+        unit=str(form.get("unit", "шт")).strip() or "шт",
+        min_qty=min_qty,
+        comment=str(form.get("comment", "")).strip() or None,
+        is_active=True,
+    )
+    db.add(item)
+    await db.commit()
+    return RedirectResponse(url="/supplies/catalog", status_code=302)
+
+
+@router.post("/catalog/{item_id}/toggle")
+async def toggle_catalog_item(
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    result = await db.execute(select(SupplyItem).where(SupplyItem.id == item_id))
+    item = result.scalar_one_or_none()
+    if item:
+        item.is_active = not item.is_active
+        await db.commit()
+    return RedirectResponse(url="/supplies/catalog", status_code=302)
