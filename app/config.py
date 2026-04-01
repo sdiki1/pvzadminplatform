@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     manager_bonus_1: int = Field(default=10000, alias="MANAGER_BONUS_1")
     manager_bonus_2: int = Field(default=5000, alias="MANAGER_BONUS_2")
     manager_bonus_3_per_ticket: int = Field(default=200, alias="MANAGER_BONUS_3_PER_TICKET")
+    reserve_duty_bonus_rub: int = Field(default=400, alias="RESERVE_DUTY_BONUS_RUB")
+    substitution_bonus_rub: int = Field(default=500, alias="SUBSTITUTION_BONUS_RUB")
 
     # Email (Yandex SMTP) — used for admin confirmation codes
     smtp_host: str = Field(default="smtp.yandex.ru", alias="SMTP_HOST")

@@ -112,6 +112,18 @@
 .fill-mode-status.err {
     color: #b91c1c;
 }
+.shift-extra-box {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: .5rem .65rem;
+    background: #fff;
+}
+.shift-extra-box .form-check {
+    margin-bottom: .25rem;
+}
+.shift-extra-box .form-check:last-child {
+    margin-bottom: 0;
+}
 
 .popup-badge {
     display: inline-block;
@@ -153,6 +165,7 @@
     <span><i style="background:#3b82f6"></i>Открытая смена</span>
     <span><i style="background:#10b981"></i>Закрытая смена</span>
     <span><i style="background:#f59e0b"></i>Запланированная</span>
+    <span><i style="background:#fef3c7;border:1px solid #d97706"></i>Резерв +400 ₽ / Подмена +500 ₽</span>
 </div>
 
 <div id="fillModePanel" class="fill-mode-panel">
@@ -166,7 +179,7 @@
         </button>
     </div>
     <div class="row g-2 align-items-end">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label for="fillPoint" class="form-label small fw-semibold mb-1">ПВЗ</label>
             <select id="fillPoint" class="form-select form-select-sm">
                 <option value="">— выберите —</option>
@@ -175,7 +188,7 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label for="fillUser" class="form-label small fw-semibold mb-1">Сотрудник</label>
             <select id="fillUser" class="form-select form-select-sm">
                 <option value="">— выберите —</option>
@@ -184,9 +197,22 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label for="fillNotes" class="form-label small fw-semibold mb-1">Заметка (необязательно)</label>
             <input id="fillNotes" type="text" class="form-control form-control-sm" placeholder="например: подмена">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Доплаты</label>
+            <div class="shift-extra-box">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="1" id="fillReserve">
+                    <label class="form-check-label small" for="fillReserve">Резерв (+400 ₽/дежурство)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="1" id="fillSubstitution">
+                    <label class="form-check-label small" for="fillSubstitution">Подмена (+500 ₽/выход)</label>
+                </div>
+            </div>
         </div>
     </div>
     <div id="fillModeStatus" class="fill-mode-status"></div>
@@ -210,6 +236,7 @@
             <tr><td class="text-muted">Дата</td><td id="popupDate"></td></tr>
             <tr id="popupStateRow"><td class="text-muted">Статус</td><td id="popupState"></td></tr>
             <tr id="popupDurationRow"><td class="text-muted">Длительность</td><td id="popupDuration"></td></tr>
+            <tr id="popupBonusRow"><td class="text-muted">Доплаты</td><td id="popupBonus"></td></tr>
             <tr id="popupNotesRow"><td class="text-muted">Заметка</td><td id="popupNotes"></td></tr>
         </tbody>
     </table>
@@ -248,6 +275,19 @@
     <div class="mb-3">
         <label class="form-label small fw-semibold">Заметка <span class="text-muted fw-normal">(необязательно)</span></label>
         <input type="text" id="bookNotes" class="form-control form-control-sm" placeholder="например: замена">
+    </div>
+    <div class="mb-3">
+        <label class="form-label small fw-semibold mb-1">Доплаты</label>
+        <div class="shift-extra-box">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="1" id="bookReserve">
+                <label class="form-check-label small" for="bookReserve">Резерв (+400 ₽/дежурство)</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" value="1" id="bookSubstitution">
+                <label class="form-check-label small" for="bookSubstitution">Подмена (+500 ₽/выход)</label>
+            </div>
+        </div>
     </div>
     <div class="d-flex gap-2 justify-content-end">
         <button class="btn btn-outline-secondary btn-sm" id="bookCancel">Отмена</button>
@@ -290,6 +330,8 @@
         document.getElementById('bookUser').value  = '';
         document.getElementById('bookPoint').value = '';
         document.getElementById('bookNotes').value = '';
+        document.getElementById('bookReserve').checked = false;
+        document.getElementById('bookSubstitution').checked = false;
         document.getElementById('bookError').style.display = 'none';
         bookModalBackdrop.style.display = 'block';
         bookModal.style.display = 'block';
@@ -306,6 +348,8 @@
         var userId   = document.getElementById('bookUser').value;
         var pointId  = document.getElementById('bookPoint').value;
         var notes    = document.getElementById('bookNotes').value.trim();
+        var isReserve = document.getElementById('bookReserve').checked;
+        var isSubstitution = document.getElementById('bookSubstitution').checked;
         var errEl    = document.getElementById('bookError');
 
         if (!dateVal || !userId || !pointId) {
@@ -318,7 +362,14 @@
         fetch('/shifts/api/planned', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ shift_date: dateVal, user_id: +userId, point_id: +pointId, notes: notes }),
+            body: JSON.stringify({
+                shift_date: dateVal,
+                user_id: +userId,
+                point_id: +pointId,
+                notes: notes,
+                is_reserve: isReserve,
+                is_substitution: isSubstitution,
+            }),
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -342,6 +393,8 @@
     var fillPoint     = document.getElementById('fillPoint');
     var fillUser      = document.getElementById('fillUser');
     var fillNotes     = document.getElementById('fillNotes');
+    var fillReserve   = document.getElementById('fillReserve');
+    var fillSubst     = document.getElementById('fillSubstitution');
     var btnFill       = document.getElementById('btnFillSchedule');
     var btnFillClose  = document.getElementById('fillModeClose');
 
@@ -381,6 +434,8 @@
             userId: Number(fillUser.value || 0),
             pointId: Number(fillPoint.value || 0),
             notes: fillNotes.value.trim(),
+            isReserve: fillReserve.checked,
+            isSubstitution: fillSubst.checked,
             userLabel: fillUser.options[fillUser.selectedIndex] ? fillUser.options[fillUser.selectedIndex].text : '',
             pointLabel: fillPoint.options[fillPoint.selectedIndex] ? fillPoint.options[fillPoint.selectedIndex].text : '',
         };
@@ -432,7 +487,11 @@
         var planned = findPlannedEvent(dateStr, sel.userId);
         var actionPromise;
 
-        if (planned && Number(planned.extendedProps.point_id) === sel.pointId) {
+        var samePoint = planned && Number(planned.extendedProps.point_id) === sel.pointId;
+        var sameReserve = planned && Boolean(planned.extendedProps.is_reserve) === Boolean(sel.isReserve);
+        var sameSubstitution = planned && Boolean(planned.extendedProps.is_substitution) === Boolean(sel.isSubstitution);
+
+        if (planned && samePoint && sameReserve && sameSubstitution) {
             actionPromise = removePlannedShift(planned.extendedProps.planned_id).then(function () {
                 return 'removed';
             });
@@ -442,6 +501,8 @@
                 user_id: sel.userId,
                 point_id: sel.pointId,
                 notes: sel.notes,
+                is_reserve: sel.isReserve,
+                is_substitution: sel.isSubstitution,
             }).then(function () {
                 return planned ? 'updated' : 'added';
             });
@@ -536,6 +597,7 @@
             var kindBadgeEl = document.getElementById('popupKindBadge');
             var stateRow    = document.getElementById('popupStateRow');
             var durRow      = document.getElementById('popupDurationRow');
+            var bonusRow    = document.getElementById('popupBonusRow');
             var notesRow    = document.getElementById('popupNotesRow');
             var actionsEl   = document.getElementById('popupActions');
 
@@ -543,6 +605,11 @@
                 kindBadgeEl.innerHTML = '<span class="popup-badge badge-planned">Запланирована</span>';
                 stateRow.style.display    = 'none';
                 durRow.style.display      = 'none';
+                var extras = [];
+                if (p.is_reserve) extras.push('Резерв (+400 ₽)');
+                if (p.is_substitution) extras.push('Подмена (+500 ₽)');
+                bonusRow.style.display = extras.length ? '' : 'none';
+                document.getElementById('popupBonus').textContent = extras.join(', ');
                 notesRow.style.display    = p.notes ? '' : 'none';
                 document.getElementById('popupNotes').textContent = p.notes || '';
                 actionsEl.innerHTML = '<button class="btn btn-sm btn-outline-danger w-100" id="btnDeletePlanned">'
@@ -560,6 +627,7 @@
                     + (stateLabels[p.state] || p.state) + '</span>';
                 stateRow.style.display    = 'none'; // badge already shows state
                 durRow.style.display      = '';
+                bonusRow.style.display    = 'none';
                 notesRow.style.display    = 'none';
                 document.getElementById('popupDuration').textContent = dur
                     ? (Math.floor(dur / 60) + ' ч ' + (dur % 60) + ' мин')

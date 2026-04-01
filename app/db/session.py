@@ -64,8 +64,44 @@ def _ensure_appeal_columns(sync_conn) -> None:
         sync_conn.execute(text(stmt))
 
 
+def _ensure_planned_shift_columns(sync_conn) -> None:
+    """Lightweight schema patch for planned shift flags."""
+    try:
+        existing_cols = {c["name"] for c in inspect(sync_conn).get_columns("planned_shifts")}
+    except Exception:
+        return
+
+    statements: list[str] = []
+    if "is_reserve" not in existing_cols:
+        statements.append("ALTER TABLE planned_shifts ADD COLUMN is_reserve BOOLEAN NOT NULL DEFAULT FALSE")
+    if "is_substitution" not in existing_cols:
+        statements.append("ALTER TABLE planned_shifts ADD COLUMN is_substitution BOOLEAN NOT NULL DEFAULT FALSE")
+
+    for stmt in statements:
+        sync_conn.execute(text(stmt))
+
+
+def _ensure_payroll_item_columns(sync_conn) -> None:
+    """Lightweight schema patch for payroll bonus columns."""
+    try:
+        existing_cols = {c["name"] for c in inspect(sync_conn).get_columns("payroll_items")}
+    except Exception:
+        return
+
+    statements: list[str] = []
+    if "reserve_bonus_rub" not in existing_cols:
+        statements.append("ALTER TABLE payroll_items ADD COLUMN reserve_bonus_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
+    if "substitution_bonus_rub" not in existing_cols:
+        statements.append("ALTER TABLE payroll_items ADD COLUMN substitution_bonus_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
+
+    for stmt in statements:
+        sync_conn.execute(text(stmt))
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_user_rate_columns)
         await conn.run_sync(_ensure_appeal_columns)
+        await conn.run_sync(_ensure_planned_shift_columns)
+        await conn.run_sync(_ensure_payroll_item_columns)

@@ -193,6 +193,10 @@ async def shift_events(
         title_parts = [user.full_name if user else "?"]
         if point:
             title_parts.append(point.short_name or point.name)
+        if p.is_reserve:
+            title_parts.append("РЕЗЕРВ")
+        if p.is_substitution:
+            title_parts.append("ПОДМЕНА")
         # Planned: use user color with amber tint if no personal color
         planned_color = (user.color if user and getattr(user, "color", None) else "#f59e0b")
         events.append({
@@ -207,6 +211,8 @@ async def shift_events(
                 "planned_id": p.id,
                 "user_id": p.user_id,
                 "point_id": p.point_id,
+                "is_reserve": bool(p.is_reserve),
+                "is_substitution": bool(p.is_substitution),
                 "point": point.name if point else None,
                 "employee": user.full_name if user else None,
                 "notes": p.notes or "",
@@ -222,6 +228,15 @@ async def create_planned_shift(
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
 ):
+    def _to_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on", "да"}
+        return False
+
     data = await request.json()
     try:
         shift_date = date.fromisoformat(str(data.get("shift_date", ""))[:10])
@@ -231,6 +246,8 @@ async def create_planned_shift(
     user_id = int(data.get("user_id", 0))
     point_id = int(data.get("point_id", 0))
     notes = str(data.get("notes", "")).strip() or None
+    is_reserve = _to_bool(data.get("is_reserve", False))
+    is_substitution = _to_bool(data.get("is_substitution", False))
 
     if not user_id or not point_id:
         return JSONResponse({"error": "user_id and point_id required"}, status_code=400)
@@ -246,11 +263,15 @@ async def create_planned_shift(
     if existing:
         existing.point_id = point_id
         existing.notes = notes
+        existing.is_reserve = is_reserve
+        existing.is_substitution = is_substitution
     else:
         ps = PlannedShift(
             user_id=user_id,
             point_id=point_id,
             shift_date=shift_date,
+            is_reserve=is_reserve,
+            is_substitution=is_substitution,
             notes=notes,
             created_at=datetime.now(TZ),
         )

@@ -46,6 +46,8 @@
                 <th class="text-end">База</th>
                 <th class="text-end">Мотивация</th>
                 <th class="text-end">Бонус выд.</th>
+                <th class="text-end">Резерв</th>
+                <th class="text-end">Подмена</th>
                 <th class="text-end">Удержания</th>
                 <th class="text-end">Бонус мен.</th>
                 <th class="text-end">Корректир.</th>
@@ -63,6 +65,8 @@
                 <td class="text-end">{{ "%.2f"|format(item.base_amount_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.motivation_amount_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.issued_bonus_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.reserve_bonus_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.substitution_bonus_rub|float) }}</td>
                 <td class="text-end text-danger">{{ "%.2f"|format(item.dispute_deduction_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.manager_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.adjustments_rub|float) }}</td>

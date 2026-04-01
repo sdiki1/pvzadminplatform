@@ -15,6 +15,7 @@ from app.db.models import (
     ApprovalStatus,
     MotivationSource,
     PayrollItem,
+    PlannedShift,
     Shift,
     User,
 )
@@ -40,6 +41,8 @@ class EmployeePayrollBreakdown:
     base_amount_rub: Decimal
     motivation_amount_rub: Decimal
     issued_bonus_rub: Decimal
+    reserve_bonus_rub: Decimal
+    substitution_bonus_rub: Decimal
     dispute_deduction_rub: Decimal
     manager_bonus_rub: Decimal
     adjustments_rub: Decimal
@@ -75,6 +78,13 @@ class PayrollService:
 
         shifts = await self.shift_repo.list_closed_between(period_start, period_end)
         valid_shifts = [s for s in shifts if self._is_shift_payable(s)]
+        planned_result = await self.session.execute(
+            select(PlannedShift).where(
+                PlannedShift.shift_date >= period_start,
+                PlannedShift.shift_date <= period_end,
+            )
+        )
+        planned_shifts = planned_result.scalars().all()
 
         main_records = await self.motivation_repo.list_between_source(MotivationSource.MAIN, period_start, period_end)
         dispute_records = await self.motivation_repo.list_between_source(MotivationSource.DISPUTE, period_start, period_end)
@@ -83,6 +93,8 @@ class PayrollService:
         shift_hours_by_user = defaultdict(lambda: ZERO)
         shifts_count_by_user = defaultdict(int)
         base_by_user = defaultdict(lambda: ZERO)
+        reserve_count_by_user = defaultdict(int)
+        substitution_count_by_user = defaultdict(int)
 
         shifts_by_day_point: dict[tuple[date, int], list[Shift]] = defaultdict(list)
         for shift in valid_shifts:
@@ -97,6 +109,17 @@ class PayrollService:
                 continue
             point = points_map.get(shift.point_id)
             base_by_user[shift.user_id] += self._calc_shift_base(shift, user, point)
+
+        substitution_plan_keys: set[tuple[int, date, int]] = set()
+        for ps in planned_shifts:
+            if ps.is_reserve:
+                reserve_count_by_user[ps.user_id] += 1
+            if ps.is_substitution:
+                substitution_plan_keys.add((ps.user_id, ps.shift_date, ps.point_id))
+
+        for shift in valid_shifts:
+            if (shift.user_id, shift.shift_date, shift.point_id) in substitution_plan_keys:
+                substitution_count_by_user[shift.user_id] += 1
 
         user_id_by_last_name = {}
         for user in users:
@@ -145,6 +168,14 @@ class PayrollService:
             full_steps = int(issued_count // Decimal(self.settings.wb_issue_bonus_step))
             issued_bonus_by_user[user_id] = Decimal(full_steps * self.settings.wb_issue_bonus_amount)
 
+        reserve_bonus_by_user = defaultdict(lambda: ZERO)
+        for user_id, reserve_count in reserve_count_by_user.items():
+            reserve_bonus_by_user[user_id] = Decimal(reserve_count * self.settings.reserve_duty_bonus_rub)
+
+        substitution_bonus_by_user = defaultdict(lambda: ZERO)
+        for user_id, substitution_count in substitution_count_by_user.items():
+            substitution_bonus_by_user[user_id] = Decimal(substitution_count * self.settings.substitution_bonus_rub)
+
         run = await self.payroll_repo.create_or_replace_run(period_start, period_end, payout_day, generated_by)
 
         results: list[EmployeePayrollBreakdown] = []
@@ -154,11 +185,13 @@ class PayrollService:
             base = base_by_user[user.id]
             motivation = motivation_by_user[user.id]
             issued_bonus = issued_bonus_by_user[user.id]
+            reserve_bonus = reserve_bonus_by_user[user.id]
+            substitution_bonus = substitution_bonus_by_user[user.id]
             dispute = dispute_by_user[user.id]
             manager_bonus = manager_bonus_by_user[user.id]
             adjustment = adjustments_by_user[user.id]
 
-            total = base + motivation + issued_bonus - dispute + manager_bonus + adjustment
+            total = base + motivation + issued_bonus + reserve_bonus + substitution_bonus - dispute + manager_bonus + adjustment
             total = self._money_round(total)
 
             details = {
@@ -167,6 +200,10 @@ class PayrollService:
                 "shifts_count": shifts_count_by_user[user.id],
                 "hours_total": str(self._money_round(shift_hours_by_user[user.id])),
                 "issued_items": str(self._money_round(issued_count_by_user[user.id])),
+                "reserve_count": reserve_count_by_user[user.id],
+                "reserve_bonus_rub": str(self._money_round(reserve_bonus)),
+                "substitution_count": substitution_count_by_user[user.id],
+                "substitution_bonus_rub": str(self._money_round(substitution_bonus)),
             }
 
             result = EmployeePayrollBreakdown(
@@ -176,6 +213,8 @@ class PayrollService:
                 base_amount_rub=self._money_round(base),
                 motivation_amount_rub=self._money_round(motivation),
                 issued_bonus_rub=self._money_round(issued_bonus),
+                reserve_bonus_rub=self._money_round(reserve_bonus),
+                substitution_bonus_rub=self._money_round(substitution_bonus),
                 dispute_deduction_rub=self._money_round(dispute),
                 manager_bonus_rub=self._money_round(manager_bonus),
                 adjustments_rub=self._money_round(adjustment),
@@ -194,6 +233,8 @@ class PayrollService:
                     base_amount_rub=result.base_amount_rub,
                     motivation_amount_rub=result.motivation_amount_rub,
                     issued_bonus_rub=result.issued_bonus_rub,
+                    reserve_bonus_rub=result.reserve_bonus_rub,
+                    substitution_bonus_rub=result.substitution_bonus_rub,
                     dispute_deduction_rub=result.dispute_deduction_rub,
                     manager_bonus_rub=result.manager_bonus_rub,
                     adjustments_rub=result.adjustments_rub,

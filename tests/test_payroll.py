@@ -17,6 +17,7 @@ from app.db.models import (
     MotivationRecord,
     MotivationSource,
     Point,
+    PlannedShift,
     Shift,
     ShiftState,
     User,
@@ -344,6 +345,103 @@ async def test_manager_bonus_type3_uses_all_tickets_from_appeals_table() -> None
 
         assert len(rows) == 1
         assert rows[0].manager_bonus_rub == Decimal("600.00")
+
+
+@pytest.mark.asyncio
+async def test_reserve_and_substitution_bonuses_are_applied() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    settings = Settings(
+        BOT_TOKEN="123:token",
+        ADMIN_IDS="",
+        DATABASE_URL="sqlite+aiosqlite:///:memory:",
+        RESERVE_DUTY_BONUS_RUB=400,
+        SUBSTITUTION_BONUS_RUB=500,
+    )
+
+    async with Session() as session:
+        user = User(
+            telegram_id=4001,
+            full_name="Смирнова Анна",
+            last_name="Смирнова",
+            shift_rate_rub=Decimal("2500"),
+        )
+        session.add(user)
+        await session.flush()
+
+        point = Point(
+            name="WB Мальского 5А",
+            address="Лесной, Мальского 5А",
+            brand=BrandEnum.WB,
+            latitude=58.6352,
+            longitude=59.7852,
+            radius_m=150,
+            work_start=time(10, 0),
+            work_end=time(21, 0),
+            is_active=True,
+        )
+        session.add(point)
+        await session.flush()
+
+        session.add(
+            Shift(
+                user_id=user.id,
+                point_id=point.id,
+                shift_date=date(2026, 3, 10),
+                state=ShiftState.CLOSED,
+                opened_at=datetime(2026, 3, 10, 10, 0),
+                open_lat=58.6352,
+                open_lon=59.7852,
+                open_distance_m=10,
+                open_geo_status=GeoStatus.OK,
+                open_approval_status=ApprovalStatus.APPROVED,
+                closed_at=datetime(2026, 3, 10, 21, 0),
+                close_lat=58.6352,
+                close_lon=59.7852,
+                close_distance_m=11,
+                close_geo_status=GeoStatus.OK,
+                close_approval_status=ApprovalStatus.APPROVED,
+                duration_minutes=660,
+            )
+        )
+
+        session.add_all(
+            [
+                PlannedShift(
+                    user_id=user.id,
+                    point_id=point.id,
+                    shift_date=date(2026, 3, 10),
+                    is_substitution=True,
+                    is_reserve=False,
+                ),
+                PlannedShift(
+                    user_id=user.id,
+                    point_id=point.id,
+                    shift_date=date(2026, 3, 11),
+                    is_substitution=False,
+                    is_reserve=True,
+                ),
+            ]
+        )
+        await session.commit()
+
+        payroll_service = PayrollService(session, settings)
+        _, rows = await payroll_service.run_payroll(
+            period_start=date(2026, 3, 1),
+            period_end=date(2026, 3, 15),
+            payout_day=25,
+            generated_by=None,
+        )
+
+        assert len(rows) == 1
+        assert rows[0].base_amount_rub == Decimal("2500.00")
+        assert rows[0].reserve_bonus_rub == Decimal("400.00")
+        assert rows[0].substitution_bonus_rub == Decimal("500.00")
+        assert rows[0].total_amount_rub == Decimal("3400.00")
 
 
 def test_payroll_periods() -> None:

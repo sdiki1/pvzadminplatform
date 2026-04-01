@@ -64,6 +64,14 @@
                 <td class="amount">{{ "%.2f"|format(item.issued_bonus_rub|float) }} ₽</td>
             </tr>
             <tr>
+                <td class="label">Резервные дежурства</td>
+                <td class="amount">{{ "%.2f"|format(item.reserve_bonus_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Подмена на ПВЗ</td>
+                <td class="amount">{{ "%.2f"|format(item.substitution_bonus_rub|float) }} ₽</td>
+            </tr>
+            <tr>
                 <td class="label">Удержания по товарам (не оспорено)</td>
                 <td class="amount text-danger">−{{ "%.2f"|format(item.dispute_deduction_rub|float) }} ₽</td>
             </tr>

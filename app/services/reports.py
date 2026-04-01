@@ -36,6 +36,8 @@ class ReportService:
                 "База",
                 "Мотивация",
                 "Бонус выдача",
+                "Резерв",
+                "Подмена",
                 "Удержания спорные",
                 "Бонус менеджера",
                 "Корректировки",
@@ -52,6 +54,8 @@ class ReportService:
                     float(row.base_amount_rub),
                     float(row.motivation_amount_rub),
                     float(row.issued_bonus_rub),
+                    float(row.reserve_bonus_rub),
+                    float(row.substitution_bonus_rub),
                     float(row.dispute_deduction_rub),
                     float(row.manager_bonus_rub),
                     float(row.adjustments_rub),
@@ -86,6 +90,8 @@ class ReportService:
             ws.append(["Оклад", "", row.shifts_count, float(row.base_amount_rub)])
             ws.append(["Мотивирующие начисления", "", "", float(row.motivation_amount_rub)])
             ws.append(["Премия за выдачу", "", "", float(row.issued_bonus_rub)])
+            ws.append(["Резервные дежурства", "", "", float(row.reserve_bonus_rub)])
+            ws.append(["Подмены на ПВЗ", "", "", float(row.substitution_bonus_rub)])
             ws.append(["Удержания по товарам (не оспорено)", "", "", float(row.dispute_deduction_rub)])
             ws.append(["Доп. выплаты менеджера", "", "", float(row.manager_bonus_rub)])
             ws.append(["Премия / удержание руководства", "", "", float(row.adjustments_rub)])
