@@ -99,11 +99,6 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-3">
-            <label class="form-label fw-semibold">Дата заявки <span class="text-danger">*</span></label>
-            <input type="date" class="form-control" name="request_date"
-                   value="{{ today }}" required>
-        </div>
     </div>
 
     {# ── All-good shortcut ── #}
@@ -123,10 +118,9 @@
         <div class="row g-2">
             {% for si in supply_items if si.category == cat %}
             <div class="col-md-4 col-sm-6">
-                <div class="supply-item-card all-good" id="card_{{ si.id }}"
+                <div class="supply-item-card" id="card_{{ si.id }}"
                      onclick="toggleItem({{ si.id }})">
                     <div class="supply-item-toggle" id="toggle_{{ si.id }}">
-                        <i class="bi bi-check2"></i>
                     </div>
                     <div>
                         <div class="supply-item-name">{{ si.name }}</div>
@@ -157,10 +151,9 @@
         <div class="row g-2">
             {% for si in no_cat %}
             <div class="col-md-4 col-sm-6">
-                <div class="supply-item-card all-good" id="card_{{ si.id }}"
+                <div class="supply-item-card" id="card_{{ si.id }}"
                      onclick="toggleItem({{ si.id }})">
                     <div class="supply-item-toggle" id="toggle_{{ si.id }}">
-                        <i class="bi bi-check2"></i>
                     </div>
                     <div>
                         <div class="supply-item-name">{{ si.name }}</div>
@@ -217,11 +210,10 @@ itemNames[{{ si.id }}] = '{{ si.name | replace("'", "\\'") }}';
 function toggleItem(id) {
     var card = document.getElementById('card_' + id);
     if (orderedItems.has(id)) {
-        // uncheck → all-good
+        // uncheck → neutral
         orderedItems.delete(id);
         card.classList.remove('ordered');
-        card.classList.add('all-good');
-        card.querySelector('.supply-item-toggle').innerHTML = '<i class="bi bi-check2"></i>';
+        card.querySelector('.supply-item-toggle').innerHTML = '';
         var qty = document.getElementById('qty_' + id);
         if (qty) qty.value = '';
     } else {
@@ -243,12 +235,11 @@ function toggleAllGood() {
         document.getElementById('allGoodBtn').classList.remove('active');
         document.getElementById('allGoodInput').value = '';
     } else {
-        // mark all as all-good
+        // mark all as neutral (clear ordered selection)
         orderedItems.forEach(function(id) {
             var card = document.getElementById('card_' + id);
             card.classList.remove('ordered');
-            card.classList.add('all-good');
-            card.querySelector('.supply-item-toggle').innerHTML = '<i class="bi bi-check2"></i>';
+            card.querySelector('.supply-item-toggle').innerHTML = '';
         });
         orderedItems.clear();
         document.getElementById('allGoodBtn').classList.add('active');

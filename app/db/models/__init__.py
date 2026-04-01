@@ -57,6 +57,7 @@ from app.db.models.supply import (
     SupplyItem,
     SupplyRequestHeader,
     SupplyRequestItem,
+    SupplyStatusLog,
 )
 
 # Delivery models
@@ -128,6 +129,7 @@ __all__ = [
     "SupplyItem",
     "SupplyRequestHeader",
     "SupplyRequestItem",
+    "SupplyStatusLog",
     # Delivery
     "PointDeliveryStat",
     # Appeals

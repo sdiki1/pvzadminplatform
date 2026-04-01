@@ -1,44 +1,176 @@
 {% extends "base.html" %}
 {% block title %}Заявка #{{ item.id }} - PVZ Admin{% endblock %}
 
+{% block extra_css %}
+<style>
+.status-badge { font-size: 12px; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
+.history-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: #6366f1;
+    flex-shrink: 0; margin-top: 5px;
+}
+.history-line {
+    width: 2px; background: #e2e8f0; flex-shrink: 0; margin: 0 4px;
+}
+.history-item { display: flex; gap: 12px; }
+.history-body { flex: 1; padding-bottom: 16px; }
+.history-meta { font-size: 12px; color: #64748b; }
+.line-status-form { display: none; }
+.line-status-form.open { display: table-row; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h1>Заявка #{{ item.id }}</h1>
     <a href="/supplies" class="btn btn-outline-secondary btn-sm">Назад</a>
 </div>
 
-<div class="row g-3">
+<div class="row g-3 mb-4">
+    {# ── Info card ── #}
     <div class="col-md-4">
-        <div class="form-card">
+        <div class="form-card h-100">
             <h6 class="mb-3">Информация</h6>
-            <table class="table table-sm table-borderless">
-                <tr><td class="text-muted">Дата</td><td>{{ item.request_date.strftime('%d.%m.%Y') }}</td></tr>
+            <table class="table table-sm table-borderless mb-0">
+                <tr><td class="text-muted" style="width:40%">Дата</td><td>{{ item.request_date.strftime('%d.%m.%Y') }}</td></tr>
                 <tr><td class="text-muted">Точка</td><td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td></tr>
-                <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ request_status_labels.get(item.status, item.status) }}</span></td></tr>
+                <tr>
+                    <td class="text-muted">Статус</td>
+                    <td><span class="badge badge-status-{{ item.status }}">{{ request_status_labels.get(item.status, item.status) }}</span></td>
+                </tr>
                 <tr><td class="text-muted">Комментарий</td><td>{{ item.comment or '-' }}</td></tr>
             </table>
+
+            {# ── Change header status ── #}
+            <hr class="my-3">
+            <h6 class="mb-2">Изменить статус заявки</h6>
+            <form method="post" action="/supplies/{{ item.id }}/status">
+                <div class="mb-2">
+                    <select class="form-select form-select-sm" name="status" required>
+                        {% for val, label in statuses %}
+                        <option value="{{ val }}" {% if val == item.status %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <input type="text" class="form-control form-control-sm" name="comment" placeholder="Комментарий (необязательно)">
+                </div>
+                <button type="submit" class="btn btn-sm btn-primary w-100">Сохранить</button>
+            </form>
         </div>
     </div>
+
+    {# ── Line items ── #}
     <div class="col-md-8">
         <div class="table-container">
             <div class="px-3 py-2 border-bottom"><h6 class="mb-0">Позиции</h6></div>
-            <table class="table">
-                <thead><tr><th>Расходник</th><th>Запрошено</th><th>Подтверждено</th><th>Выдано</th><th>Статус</th></tr></thead>
+            <table class="table mb-0">
+                <thead>
+                    <tr>
+                        <th>Расходник</th>
+                        <th>Запрошено</th>
+                        <th>Подтверждено</th>
+                        <th>Выдано</th>
+                        <th>Статус</th>
+                        <th></th>
+                    </tr>
+                </thead>
                 <tbody>
                     {% for line in line_items %}
-                    <tr>
-                        <td>{{ supply_items_map.get(line.supply_item_id).name if supply_items_map.get(line.supply_item_id) else '?' }}</td>
-                        <td>{{ line.requested_qty or '-' }}</td>
-                        <td>{{ line.approved_qty or '-' }}</td>
-                        <td>{{ line.delivered_qty or '-' }}</td>
-                        <td><span class="badge badge-status-{{ line.item_status }}">{{ line_item_status_labels.get(line.item_status, line.item_status) }}</span></td>
+                    {% set si = supply_items_map.get(line.supply_item_id) %}
+                    <tr id="line-row-{{ line.id }}">
+                        <td>{{ si.name if si else '?' }}</td>
+                        <td>{{ line.requested_qty | int if line.requested_qty else '-' }}</td>
+                        <td>{{ line.approved_qty | int if line.approved_qty else '-' }}</td>
+                        <td>{{ line.delivered_qty | int if line.delivered_qty else '-' }}</td>
+                        <td>
+                            <span class="badge badge-status-{{ line.item_status }}">
+                                {{ line_item_status_labels.get(line.item_status, line.item_status) }}
+                            </span>
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                                    onclick="toggleLineForm({{ line.id }})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr id="line-form-{{ line.id }}" style="display:none; background:#f8fafc">
+                        <td colspan="6" class="py-2">
+                            <form method="post" action="/supplies/{{ item.id }}/line/{{ line.id }}/status"
+                                  class="d-flex gap-2 align-items-center flex-wrap">
+                                <select class="form-select form-select-sm" name="status" style="max-width:180px">
+                                    {% for val, label in line_item_statuses %}
+                                    <option value="{{ val }}" {% if val == line.item_status %}selected{% endif %}>{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="text" class="form-control form-control-sm" name="comment"
+                                       placeholder="Комментарий" style="max-width:220px">
+                                <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                        onclick="toggleLineForm({{ line.id }})">Отмена</button>
+                            </form>
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5" class="text-center text-muted py-3">Нет позиций</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted py-3">Нет позиций</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
     </div>
 </div>
+
+{# ── History ── #}
+<div class="form-card">
+    <h6 class="mb-3"><i class="bi bi-clock-history me-2"></i>История изменений</h6>
+    {% if logs %}
+    <div style="max-height:420px; overflow-y:auto">
+        {% for log in logs %}
+        {% set who = web_users_map.get(log.changed_by_user_id) %}
+        <div class="history-item">
+            <div class="d-flex flex-column align-items-center">
+                <div class="history-dot"></div>
+                {% if not loop.last %}<div class="history-line flex-grow-1"></div>{% endif %}
+            </div>
+            <div class="history-body">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    {% if log.line_item_id %}
+                    {% set si = supply_items_map.get(
+                        (line_items | selectattr('id', 'equalto', log.line_item_id) | first).supply_item_id
+                        if (line_items | selectattr('id', 'equalto', log.line_item_id) | list) else None
+                    ) %}
+                    <span class="text-muted small">Позиция: <strong>{{ si.name if si else '#' + (log.line_item_id | string) }}</strong></span>
+                    {% else %}
+                    <span class="text-muted small fw-bold">Заявка</span>
+                    {% endif %}
+                    {% if log.old_status %}
+                    <span class="badge badge-status-{{ log.old_status }}">{{ request_status_labels.get(log.old_status, line_item_status_labels.get(log.old_status, log.old_status)) }}</span>
+                    <i class="bi bi-arrow-right text-muted" style="font-size:11px"></i>
+                    {% endif %}
+                    <span class="badge badge-status-{{ log.new_status }}">{{ request_status_labels.get(log.new_status, line_item_status_labels.get(log.new_status, log.new_status)) }}</span>
+                </div>
+                {% if log.comment %}
+                <div class="small text-secondary mt-1">{{ log.comment }}</div>
+                {% endif %}
+                <div class="history-meta mt-1">
+                    {{ log.changed_at.strftime('%d.%m.%Y %H:%M') }}
+                    {% if who %}&nbsp;·&nbsp;{{ who.display_name or who.login }}{% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">История пуста</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleLineForm(id) {
+    var row = document.getElementById('line-form-' + id);
+    row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
 {% endblock %}

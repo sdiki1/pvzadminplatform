@@ -5,14 +5,14 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 from openpyxl import load_workbook
 from sqlalchemy import delete, select
 
-from app.db.models import MotivationRecord, MotivationSource, Point, User
+from app.db.models import Appeal, MotivationRecord, MotivationSource, Point, User
 from app.db.session import SessionLocal, init_db
 from app.utils.parsing import normalize_text, parse_date, parse_decimal
 
@@ -199,6 +199,19 @@ def _resolve_user_id(user_map: dict[str, int], name: str | None) -> int | None:
     return None
 
 
+def _map_appeal_status(raw_status: str | None) -> str:
+    text = normalize_text(raw_status or "")
+    if not text or text == "без статуса":
+        return "none"
+    if "не оспор" in text:
+        return "not_appealed"
+    if "оспор" in text:
+        return "appealed"
+    if "закры" in text:
+        return "closed"
+    return "in_progress"
+
+
 async def _build_user_name_map(session) -> dict[str, int]:
     result = await session.execute(select(User))
     users = result.scalars().all()
@@ -233,10 +246,20 @@ async def run_import(file_path: Path, sheet_name: str | None) -> None:
                 MotivationRecord.record_date <= period_end,
             )
         )
+        await session.execute(
+            delete(Appeal).where(
+                Appeal.case_date >= period_start,
+                Appeal.case_date <= period_end,
+                Appeal.result_comment.is_not(None),
+                Appeal.result_comment.like("[xlsx-dispute]%"),
+            )
+        )
 
         records: list[MotivationRecord] = []
+        appeals: list[Appeal] = []
         unresolved_users: set[str] = set()
         unresolved_points: set[str] = set()
+        skipped_appeals_no_point = 0
 
         for row in rows:
             user_id = _resolve_user_id(user_map, row.manager_name)
@@ -263,11 +286,42 @@ async def run_import(file_path: Path, sheet_name: str | None) -> None:
                 )
             )
 
+            if point_id is None:
+                skipped_appeals_no_point += 1
+                continue
+
+            appeal_status = _map_appeal_status(row.status)
+            appeals.append(
+                Appeal(
+                    case_date=row.record_date,
+                    point_id=point_id,
+                    appeal_type="other",
+                    barcode=None,
+                    ticket_number=None,
+                    amount=row.amount_rub,
+                    status=appeal_status,
+                    assigned_manager_employee_id=user_id,
+                    assigned_manager_raw=row.manager_name,
+                    non_appeal_reason=row.status if appeal_status == "not_appealed" else None,
+                    charge_to_manager=False,
+                    charge_comment=None,
+                    feedback_from_nadezhda=None,
+                    feedback_from_anna=None,
+                    deadline_date=None,
+                    resolved_at=datetime.now() if appeal_status in {"appealed", "not_appealed", "closed"} else None,
+                    result_comment=f"[xlsx-dispute] {row.status or ''}".strip(),
+                )
+            )
+
         session.add_all(records)
+        if appeals:
+            session.add_all(appeals)
         await session.commit()
 
     print(f"Workbook: {file_path}")
     print(f"Inserted dispute rows: {len(rows)}")
+    print(f"Inserted appeals rows: {len(appeals)}")
+    print(f"Skipped appeals (no point): {skipped_appeals_no_point}")
     print(f"Period replaced: {period_start} .. {period_end}")
     print(f"Unresolved users: {len(unresolved_users)}")
     if unresolved_users:

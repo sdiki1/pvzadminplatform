@@ -92,3 +92,24 @@ class SupplyRequestItem(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class SupplyStatusLog(Base):
+    """History of status changes for supply requests and their line items."""
+    __tablename__ = "supply_status_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        ForeignKey("supply_request_headers.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # NULL = header status change, filled = line item status change
+    line_item_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("supply_request_items.id", ondelete="SET NULL"), nullable=True
+    )
+    old_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    new_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    changed_by_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("web_users.id", ondelete="SET NULL"), nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)

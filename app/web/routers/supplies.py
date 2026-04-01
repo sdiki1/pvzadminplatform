@@ -16,6 +16,7 @@ from app.db.models import (
     SupplyItem,
     SupplyRequestHeader,
     SupplyRequestItem,
+    SupplyStatusLog,
     WebUser,
 )
 from app.web.deps import get_current_user, get_db
@@ -38,16 +39,17 @@ REQUEST_STATUSES = [
 
 REQUEST_STATUS_LABELS = dict(REQUEST_STATUSES)
 
-LINE_ITEM_STATUS_LABELS = {
-    "not_needed": "Не требуется",
-    "requested": "Запрошено",
-    "ordered": "Заказано",
-    "in_transit": "В пути",
-    "approved": "Подтверждено",
-    "delivered": "Выдано",
-    "in_stock": "Есть в наличии",
-    "cancelled": "Отменено",
-}
+LINE_ITEM_STATUSES = [
+    ("requested", "Запрошено"),
+    ("ordered", "Заказано"),
+    ("in_transit", "В пути"),
+    ("delivered", "Выдано"),
+    ("in_stock", "Есть в наличии"),
+    ("not_needed", "Не требуется"),
+    ("cancelled", "Отменено"),
+]
+
+LINE_ITEM_STATUS_LABELS = dict(LINE_ITEM_STATUSES)
 
 
 @router.get("", response_class=HTMLResponse)
@@ -152,7 +154,7 @@ async def create_supply_request(
 
     header = SupplyRequestHeader(
         point_id=int(form["point_id"]),
-        request_date=date.fromisoformat(str(form["request_date"])),
+        request_date=date.today(),
         status="delivered" if all_good else "new",
         comment=form.get("comment", "").strip() or ("Всё есть" if all_good else None),
         created_by_user_id=current_user.id,
@@ -207,6 +209,17 @@ async def supply_detail(
     points_result = await db.execute(select(Point))
     points_map = {p.id: p for p in points_result.scalars().all()}
 
+    # History
+    from app.db.models import WebUser as WU
+    logs_result = await db.execute(
+        select(SupplyStatusLog)
+        .where(SupplyStatusLog.request_id == request_id)
+        .order_by(SupplyStatusLog.changed_at.desc())
+    )
+    logs = logs_result.scalars().all()
+    wu_result = await db.execute(select(WU))
+    web_users_map = {u.id: u for u in wu_result.scalars().all()}
+
     return templates.TemplateResponse(request, "supplies/detail.html", {"current_user": current_user,
         "active_page": "supplies",
         "item": header,
@@ -214,8 +227,82 @@ async def supply_detail(
         "supply_items_map": supply_items_map,
         "points_map": points_map,
         "statuses": REQUEST_STATUSES,
+        "line_item_statuses": LINE_ITEM_STATUSES,
         "request_status_labels": REQUEST_STATUS_LABELS,
-        "line_item_status_labels": LINE_ITEM_STATUS_LABELS})
+        "line_item_status_labels": LINE_ITEM_STATUS_LABELS,
+        "logs": logs,
+        "web_users_map": web_users_map})
+
+
+@router.post("/{request_id}/status")
+async def update_supply_status(
+    request_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    result = await db.execute(select(SupplyRequestHeader).where(SupplyRequestHeader.id == request_id))
+    header = result.scalar_one_or_none()
+    if not header:
+        return RedirectResponse(url="/supplies", status_code=302)
+
+    form = await request.form()
+    new_status = str(form.get("status", "")).strip()
+    comment = str(form.get("comment", "")).strip() or None
+
+    if new_status and new_status != header.status:
+        log = SupplyStatusLog(
+            request_id=request_id,
+            line_item_id=None,
+            old_status=header.status,
+            new_status=new_status,
+            comment=comment,
+            changed_by_user_id=current_user.id,
+        )
+        db.add(log)
+        header.status = new_status
+        header.updated_by_user_id = current_user.id
+        await db.commit()
+
+    return RedirectResponse(url=f"/supplies/{request_id}", status_code=302)
+
+
+@router.post("/{request_id}/line/{line_id}/status")
+async def update_line_item_status(
+    request_id: int,
+    line_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(SupplyRequestItem).where(
+            SupplyRequestItem.id == line_id,
+            SupplyRequestItem.request_id == request_id,
+        )
+    )
+    line = result.scalar_one_or_none()
+    if not line:
+        return RedirectResponse(url=f"/supplies/{request_id}", status_code=302)
+
+    form = await request.form()
+    new_status = str(form.get("status", "")).strip()
+    comment = str(form.get("comment", "")).strip() or None
+
+    if new_status and new_status != line.item_status:
+        log = SupplyStatusLog(
+            request_id=request_id,
+            line_item_id=line_id,
+            old_status=line.item_status,
+            new_status=new_status,
+            comment=comment,
+            changed_by_user_id=current_user.id,
+        )
+        db.add(log)
+        line.item_status = new_status
+        await db.commit()
+
+    return RedirectResponse(url=f"/supplies/{request_id}", status_code=302)
 
 
 @router.post("/catalog/new")
