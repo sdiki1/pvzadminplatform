@@ -52,7 +52,14 @@
                 </td>
                 <td>{% if item.is_active %}<span class="badge bg-success">Активен</span>{% else %}<span class="badge bg-secondary">Неактивен</span>{% endif %}</td>
                 <td>{{ item.last_login_at.strftime('%d.%m.%Y %H:%M') if item.last_login_at else 'Никогда' }}</td>
-                <td><a href="/users/{{ item.id }}/edit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-pencil"></i></a></td>
+                <td class="d-flex gap-1">
+                    <a href="/users/{{ item.id }}/edit" class="btn btn-sm btn-outline-secondary" title="Редактировать"><i class="bi bi-pencil"></i></a>
+                    <button type="button" class="btn btn-sm btn-outline-success"
+                            title="Создать как сотрудника"
+                            onclick="openCreateEmployee({{ item.id }}, '{{ item.full_name | replace("'", "\\'") }}', '{{ item.phone or '' }}')">
+                        <i class="bi bi-person-plus"></i>
+                    </button>
+                </td>
             </tr>
             {% else %}
             <tr><td colspan="7" class="text-center text-muted py-4">Нет записей</td></tr>
@@ -61,4 +68,61 @@
     </table>
     {{ pagination(page, total_pages, total, '/users?search=' + search + '&role=' + role) }}
 </div>
+
+{# ── Create employee modal ── #}
+<div class="modal fade" id="createEmployeeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Создать сотрудника</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="createEmployeeForm" method="post" action="">
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">
+                        Создаёт запись сотрудника (для бота). Если Telegram ID не указан — будет использован временный
+                        идентификатор. Сотрудник сможет связать аккаунт бота позже.
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label">ФИО <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="full_name" id="ceFullName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Телефон</label>
+                        <input type="text" class="form-control" name="phone" id="cePhone">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Telegram ID <span class="text-muted fw-normal small">(необязательно)</span></label>
+                        <input type="number" class="form-control" name="telegram_id" id="ceTelegramId" placeholder="например 123456789">
+                        <div class="form-text">Узнать ID: пусть сотрудник напишет @userinfobot в Telegram</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Роль в боте</label>
+                        <select class="form-select" name="role">
+                            <option value="employee">Сотрудник</option>
+                            <option value="admin">Администратор</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success"><i class="bi bi-check2 me-1"></i>Создать</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openCreateEmployee(userId, fullName, phone) {
+    document.getElementById('createEmployeeForm').action = '/users/' + userId + '/create-employee';
+    document.getElementById('ceFullName').value = fullName;
+    document.getElementById('cePhone').value = phone || '';
+    document.getElementById('ceTelegramId').value = '';
+    var modal = new bootstrap.Modal(document.getElementById('createEmployeeModal'));
+    modal.show();
+}
+</script>
 {% endblock %}

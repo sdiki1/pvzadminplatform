@@ -185,6 +185,11 @@ async def update_employee(
     employee.full_name = form.get("full_name", "").strip()
     employee.phone = form.get("phone", "").strip() or None
     employee.is_active = form.get("is_active") == "on"
+    color_raw = form.get("color", "").strip()
+    if color_raw and color_raw.startswith("#") and len(color_raw) == 7:
+        employee.color = color_raw
+    else:
+        employee.color = None
 
     await db.commit()
     return RedirectResponse(url=f"/employees/{employee_id}", status_code=302)

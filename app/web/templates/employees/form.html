@@ -18,9 +18,21 @@
                 <label class="form-label">ФИО <span class="text-danger">*</span></label>
                 <input type="text" class="form-control" name="full_name" value="{{ item.full_name }}" required>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <label class="form-label">Телефон</label>
                 <input type="text" class="form-control" name="phone" value="{{ item.phone or '' }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Цвет в календаре</label>
+                <div class="d-flex align-items-center gap-2">
+                    <input type="color" class="form-control form-control-color"
+                           name="color" id="colorPicker"
+                           value="{{ item.color or '#3b82f6' }}"
+                           style="width:48px;height:38px;padding:2px 4px;cursor:pointer">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="resetColor" title="Сбросить">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                    </button>
+                </div>
             </div>
             <div class="col-12">
                 <div class="form-check">
@@ -36,4 +48,12 @@
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('resetColor').addEventListener('click', function () {
+    document.getElementById('colorPicker').value = '#3b82f6';
+});
+</script>
 {% endblock %}

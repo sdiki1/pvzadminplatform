@@ -40,6 +40,9 @@ def _ensure_user_rate_columns(sync_conn) -> None:
         else:
             statements.append("ALTER TABLE users ADD COLUMN hourly_rate_rub NUMERIC(10,2)")
 
+    if "color" not in existing_cols:
+        statements.append("ALTER TABLE users ADD COLUMN color VARCHAR(7)")
+
     for stmt in statements:
         sync_conn.execute(text(stmt))
 

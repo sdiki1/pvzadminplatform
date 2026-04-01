@@ -104,7 +104,10 @@
             </div>
             <div class="d-flex align-items-center gap-3">
                 {% if current_user %}
-                <span class="text-muted small">{{ current_user.full_name }}</span>
+                <span class="text-muted small d-none d-md-inline">{{ current_user.full_name }}</span>
+                <a href="/profile/change-password" class="btn btn-sm btn-outline-secondary" title="Сменить пароль">
+                    <i class="bi bi-key"></i>
+                </a>
                 <a href="/logout" class="btn btn-sm btn-outline-secondary">
                     <i class="bi bi-box-arrow-right"></i> Выход
                 </a>

@@ -84,6 +84,8 @@ class User(Base):
     # Персональные ставки сотрудника (применяются во всех точках)
     shift_rate_rub: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
     hourly_rate_rub: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    # Цвет в календаре (hex, например #3b82f6)
+    color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 

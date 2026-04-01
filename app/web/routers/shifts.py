@@ -141,8 +141,14 @@ async def shift_events(
     users_map = {u.id: u for u in (await db.execute(select(User))).scalars().all()}
     points_map = {p.id: p for p in (await db.execute(select(Point))).scalars().all()}
 
+    def _user_color(user, state: str) -> str:
+        """Use the employee's personal color if set, otherwise fall back to state defaults."""
+        if user and getattr(user, "color", None):
+            # Darken slightly for closed shifts to show state distinction
+            return user.color
+        return {"open": "#3b82f6", "closed": "#10b981"}.get(state, "#6b7280")
+
     events = []
-    colors = {"open": "#3b82f6", "closed": "#10b981"}
 
     for s in shifts:
         user = users_map.get(s.user_id)
@@ -154,17 +160,24 @@ async def shift_events(
             title_parts.append(point.short_name or point.name)
         if duration_h:
             title_parts.append(f"{duration_h}ч")
+        color = _user_color(user, state_val)
+        # Closed shifts: add slight transparency via border to distinguish visually
+        border_color = color
+        opacity_style = "opacity:0.7" if state_val == "closed" else ""
         events.append({
             "id": f"shift-{s.id}",
             "title": " · ".join(title_parts),
             "start": str(s.shift_date),
-            "color": colors.get(state_val, "#6b7280"),
+            "color": color,
+            "borderColor": border_color,
+            "textColor": "#ffffff",
             "extendedProps": {
                 "kind": "actual",
                 "state": state_val,
                 "duration_minutes": s.duration_minutes,
                 "point": point.name if point else None,
                 "employee": user.full_name if user else None,
+                "opacity_style": opacity_style,
             },
         })
 
@@ -174,12 +187,15 @@ async def shift_events(
         title_parts = [user.full_name if user else "?"]
         if point:
             title_parts.append(point.short_name or point.name)
+        # Planned: use user color with amber tint if no personal color
+        planned_color = (user.color if user and getattr(user, "color", None) else "#f59e0b")
         events.append({
             "id": f"planned-{p.id}",
-            "title": " · ".join(title_parts),
+            "title": "📅 " + " · ".join(title_parts),
             "start": str(p.shift_date),
-            "color": "#f59e0b",
+            "color": planned_color,
             "borderColor": "#d97706",
+            "textColor": "#1a1a1a",
             "extendedProps": {
                 "kind": "planned",
                 "planned_id": p.id,

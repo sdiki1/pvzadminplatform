@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.models import WebUser
+from app.db.models import RoleEnum, User, WebUser
 from app.services.email import EmailService
 from app.web.auth import hash_password
 from app.web.deps import get_current_user, get_db, require_admin
@@ -226,3 +226,48 @@ async def update_user(
 
     await db.commit()
     return RedirectResponse(url="/users", status_code=302)
+
+
+@router.post("/{user_id}/create-employee")
+async def create_employee_from_web_user(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(require_admin),
+):
+    """Create a bot-side User (employee) record from a web user."""
+    web_user = (await db.execute(select(WebUser).where(WebUser.id == user_id))).scalar_one_or_none()
+    if not web_user:
+        return RedirectResponse(url="/users", status_code=302)
+
+    form = await request.form()
+    full_name = str(form.get("full_name", "")).strip() or web_user.full_name
+    phone = str(form.get("phone", "")).strip() or web_user.phone or None
+    role_raw = str(form.get("role", "employee")).strip()
+    role = RoleEnum.ADMIN if role_raw == "admin" else RoleEnum.EMPLOYEE
+
+    tg_raw = str(form.get("telegram_id", "")).strip()
+    if tg_raw.lstrip("-").isdigit():
+        telegram_id = int(tg_raw)
+    else:
+        # Placeholder: large negative number based on web user id, won't conflict with Telegram IDs
+        telegram_id = -(1_000_000_000 + user_id)
+
+    # Check uniqueness
+    existing = (await db.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )).scalar_one_or_none()
+    if existing:
+        return RedirectResponse(url="/users", status_code=302)
+
+    employee = User(
+        telegram_id=telegram_id,
+        full_name=full_name,
+        phone=phone,
+        role=role,
+        is_active=True,
+    )
+    db.add(employee)
+    await db.commit()
+    await db.refresh(employee)
+    return RedirectResponse(url=f"/employees/{employee.id}", status_code=302)

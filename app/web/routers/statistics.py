@@ -119,7 +119,7 @@ async def create_report(
     form = await request.form()
     report = DailyStatReport(
         point_id=int(form["point_id"]),
-        stat_date=form["stat_date"],
+        stat_date=date.fromisoformat(str(form["stat_date"])),
         comment=form.get("comment", "").strip() or None,
         source="manual",
         created_by_user_id=current_user.id,
