@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -9,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import MarketingSurvey, WebUser
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -29,6 +31,8 @@ async def list_surveys(
 ):
     per_page = 25
     query = select(MarketingSurvey)
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
 
     if search:
         query = query.where(
@@ -36,10 +40,10 @@ async def list_surveys(
             | MarketingSurvey.parent_full_name.ilike(f"%{search}%")
             | MarketingSurvey.phone.ilike(f"%{search}%")
         )
-    if date_from:
-        query = query.where(MarketingSurvey.survey_date >= date_from)
-    if date_to:
-        query = query.where(MarketingSurvey.survey_date <= date_to)
+    if parsed_date_from:
+        query = query.where(MarketingSurvey.survey_date >= parsed_date_from)
+    if parsed_date_to:
+        query = query.where(MarketingSurvey.survey_date <= parsed_date_to)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
     query = query.order_by(MarketingSurvey.survey_date.desc())
@@ -77,6 +81,7 @@ async def create_survey(
     current_user: WebUser = Depends(get_current_user),
 ):
     form = await request.form()
+    survey_date = parse_date(form.get("survey_date")) or date.today()
 
     age_raw = form.get("child_age_raw", "").strip()
     age_years = None
@@ -97,7 +102,7 @@ async def create_survey(
         current_pickup_point_text=form.get("current_pickup_point_text", "").strip() or None,
         attraction_reason=form.get("attraction_reason", "").strip() or None,
         personal_data_consent=form.get("personal_data_consent") == "on",
-        survey_date=form["survey_date"],
+        survey_date=survey_date,
         coupon_given=form.get("coupon_given") == "on",
         comment=form.get("comment", "").strip() or None,
         created_by_user_id=current_user.id,

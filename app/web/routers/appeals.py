@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Appeal, AppealFeedback, Point, User, WebUser
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -51,6 +52,8 @@ async def list_appeals(
 ):
     per_page = 25
     query = select(Appeal)
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
 
     if point_id:
         query = query.where(Appeal.point_id == point_id)
@@ -58,10 +61,10 @@ async def list_appeals(
         query = query.where(Appeal.status == status)
     if appeal_type:
         query = query.where(Appeal.appeal_type == appeal_type)
-    if date_from:
-        query = query.where(Appeal.case_date >= date_from)
-    if date_to:
-        query = query.where(Appeal.case_date <= date_to)
+    if parsed_date_from:
+        query = query.where(Appeal.case_date >= parsed_date_from)
+    if parsed_date_to:
+        query = query.where(Appeal.case_date <= parsed_date_to)
     if search:
         query = query.where(
             Appeal.barcode.ilike(f"%{search}%")
@@ -135,6 +138,8 @@ async def create_appeal(
     current_user: WebUser = Depends(get_current_user),
 ):
     form = await request.form()
+    case_date = parse_date(form.get("case_date")) or date.today()
+    deadline_date = parse_date(form.get("deadline_date"))
 
     amount = None
     raw_amount = form.get("amount", "").strip()
@@ -162,7 +167,7 @@ async def create_appeal(
             assigned_manager_employee_id = manager.id
 
     appeal = Appeal(
-        case_date=form["case_date"],
+        case_date=case_date,
         point_id=int(form["point_id"]),
         appeal_type=form.get("appeal_type", "other"),
         barcode=form.get("barcode", "").strip() or None,
@@ -176,7 +181,7 @@ async def create_appeal(
         charge_comment=form.get("charge_comment", "").strip() or None,
         feedback_from_nadezhda=form.get("feedback_from_nadezhda", "").strip() or None,
         feedback_from_anna=form.get("feedback_from_anna", "").strip() or None,
-        deadline_date=form.get("deadline_date") or None,
+        deadline_date=deadline_date,
         result_comment=form.get("result_comment", "").strip() or None,
         created_by_user_id=current_user.id,
     )

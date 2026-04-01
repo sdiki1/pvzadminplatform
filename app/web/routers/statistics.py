@@ -16,6 +16,7 @@ from app.db.models import (
     Point,
     WebUser,
 )
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -36,13 +37,15 @@ async def list_statistics(
 ):
     per_page = 30
     query = select(DailyStatReport)
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
 
     if point_id:
         query = query.where(DailyStatReport.point_id == point_id)
-    if date_from:
-        query = query.where(DailyStatReport.stat_date >= date_from)
-    if date_to:
-        query = query.where(DailyStatReport.stat_date <= date_to)
+    if parsed_date_from:
+        query = query.where(DailyStatReport.stat_date >= parsed_date_from)
+    if parsed_date_to:
+        query = query.where(DailyStatReport.stat_date <= parsed_date_to)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
     query = query.order_by(DailyStatReport.stat_date.desc())
@@ -117,9 +120,10 @@ async def create_report(
     current_user: WebUser = Depends(get_current_user),
 ):
     form = await request.form()
+    stat_date = parse_date(form.get("stat_date")) or date.today()
     report = DailyStatReport(
         point_id=int(form["point_id"]),
-        stat_date=date.fromisoformat(str(form["stat_date"])),
+        stat_date=stat_date,
         comment=form.get("comment", "").strip() or None,
         source="manual",
         created_by_user_id=current_user.id,

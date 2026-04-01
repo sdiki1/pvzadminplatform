@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -10,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Point, PointDeliveryStat, WebUser
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -47,13 +49,15 @@ async def list_deliveries(
 ):
     per_page = 30
     query = select(PointDeliveryStat)
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
 
     if point_id:
         query = query.where(PointDeliveryStat.point_id == point_id)
-    if date_from:
-        query = query.where(PointDeliveryStat.stat_date >= date_from)
-    if date_to:
-        query = query.where(PointDeliveryStat.stat_date <= date_to)
+    if parsed_date_from:
+        query = query.where(PointDeliveryStat.stat_date >= parsed_date_from)
+    if parsed_date_to:
+        query = query.where(PointDeliveryStat.stat_date <= parsed_date_to)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
     query = query.order_by(PointDeliveryStat.stat_date.desc())
@@ -102,6 +106,7 @@ async def create_delivery(
     current_user: WebUser = Depends(get_current_user),
 ):
     form = await request.form()
+    stat_date = parse_date(form.get("stat_date")) or date.today()
 
     night_raw = form.get("night_raw", "").strip() or None
     morning_raw = form.get("morning_raw", "").strip() or None
@@ -117,7 +122,7 @@ async def create_delivery(
 
     stat = PointDeliveryStat(
         point_id=int(form["point_id"]),
-        stat_date=form["stat_date"],
+        stat_date=stat_date,
         night_raw=night_raw,
         night_total=night_total,
         morning_raw=morning_raw,

@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import PlannedShift, Point, Shift, User, WebUser
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -34,15 +35,17 @@ async def list_shifts(
 ):
     per_page = 30
     query = select(Shift)
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
 
     if point_id:
         query = query.where(Shift.point_id == point_id)
     if employee_id:
         query = query.where(Shift.user_id == employee_id)
-    if date_from:
-        query = query.where(Shift.shift_date >= date_from)
-    if date_to:
-        query = query.where(Shift.shift_date <= date_to)
+    if parsed_date_from:
+        query = query.where(Shift.shift_date >= parsed_date_from)
+    if parsed_date_to:
+        query = query.where(Shift.shift_date <= parsed_date_to)
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
     query = query.order_by(Shift.shift_date.desc(), Shift.opened_at.desc())
