@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import func, func as sqlfunc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
@@ -14,6 +14,7 @@ from app.db.models import (
     PayrollItem,
     PayrollRun,
     Point,
+    RoleEnum,
     Shift,
     ShiftConfirmation,
     User,
@@ -67,6 +68,68 @@ async def list_employees(
         "role": role,
         "status": status,
     })
+
+
+@router.get("/new", response_class=HTMLResponse)
+async def new_employee(
+    request: Request,
+    current_user: WebUser = Depends(get_current_user),
+):
+    return templates.TemplateResponse(request, "employees/new.html", {
+        "current_user": current_user,
+        "active_page": "employees",
+        "error": None,
+    })
+
+
+@router.post("/new")
+async def create_employee(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    form = await request.form()
+    full_name = str(form.get("full_name", "")).strip()
+    phone = str(form.get("phone", "")).strip() or None
+    role_raw = str(form.get("role", "employee")).strip()
+    role = RoleEnum.ADMIN if role_raw == "admin" else RoleEnum.EMPLOYEE
+
+    tg_raw = str(form.get("telegram_id", "")).strip()
+    if tg_raw.lstrip("-").isdigit():
+        telegram_id = int(tg_raw)
+    else:
+        # Will be linked when employee starts the bot; use a unique placeholder
+        max_id = (await db.execute(sqlfunc.max(User.id))).scalar() or 0
+        telegram_id = -(1_000_000_000 + max_id + 1)
+
+    if not full_name:
+        return templates.TemplateResponse(request, "employees/new.html", {
+            "current_user": current_user,
+            "active_page": "employees",
+            "error": "ФИО обязательно",
+        })
+
+    existing = (await db.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )).scalar_one_or_none()
+    if existing:
+        return templates.TemplateResponse(request, "employees/new.html", {
+            "current_user": current_user,
+            "active_page": "employees",
+            "error": "Сотрудник с таким Telegram ID уже существует",
+        })
+
+    employee = User(
+        telegram_id=telegram_id,
+        full_name=full_name,
+        phone=phone,
+        role=role,
+        is_active=form.get("is_active") == "on",
+    )
+    db.add(employee)
+    await db.commit()
+    await db.refresh(employee)
+    return RedirectResponse(url=f"/employees/{employee.id}", status_code=302)
 
 
 @router.get("/{employee_id}", response_class=HTMLResponse)
