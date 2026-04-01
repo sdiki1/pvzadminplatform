@@ -5,7 +5,10 @@
 {% block content %}
 <div class="page-header">
     <h1>График смен</h1>
-    <a href="/shifts/calendar" class="btn btn-outline-primary btn-sm"><i class="bi bi-calendar3"></i> Календарь</a>
+    <div class="d-flex gap-2">
+        <a href="/shifts/calendar" class="btn btn-outline-primary btn-sm"><i class="bi bi-calendar3"></i> Общий календарь</a>
+        <a href="/shifts/reserve" class="btn btn-outline-secondary btn-sm"><i class="bi bi-person-check"></i> График резерва</a>
+    </div>
 </div>
 
 <div class="filters-bar">
@@ -26,6 +29,12 @@
         <div class="col-md-2">
             <label class="form-label small">По</label>
             <input type="date" class="form-control form-control-sm" name="date_to" value="{{ date_to }}">
+        </div>
+        <div class="col-auto">
+            <div class="form-check form-switch mt-4 pt-1">
+                <input class="form-check-input" type="checkbox" id="showReserve" name="show_reserve" value="1" {% if show_reserve %}checked{% endif %}>
+                <label class="form-check-label small" for="showReserve">Показать резерв</label>
+            </div>
         </div>
         <div class="col-auto">
             <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i> Найти</button>
@@ -68,6 +77,45 @@
             {% endfor %}
         </tbody>
     </table>
-    {{ pagination(page, total_pages, total, '/shifts?point_id=' + point_id|string + '&date_from=' + date_from + '&date_to=' + date_to) }}
+    {% set reserve_flag = '1' if show_reserve else '0' %}
+    {{ pagination(page, total_pages, total, '/shifts?point_id=' + point_id|string + '&date_from=' + date_from + '&date_to=' + date_to + '&show_reserve=' + reserve_flag) }}
 </div>
+
+{% if show_reserve %}
+<div class="table-container mt-3">
+    <div class="px-3 py-2 border-bottom bg-light">
+        <strong>Резервный график (+400 ₽ за дежурство)</strong>
+    </div>
+    <table class="table mb-0">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Сотрудник</th>
+                <th>Точка</th>
+                <th>Резервный выход</th>
+                <th>Заметка</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in reserve_items %}
+            <tr>
+                <td>{{ item.shift_date.strftime('%d.%m.%Y') }}</td>
+                <td>{{ users_map.get(item.user_id).full_name if users_map.get(item.user_id) else '-' }}</td>
+                <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
+                <td>
+                    {% if item.is_substitution %}
+                    <span class="badge bg-info text-dark">Да (+500 ₽)</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Нет</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.notes or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">Резервных дежурств не найдено</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 {% endblock %}

@@ -32,6 +32,20 @@
 .fc .fc-more-link { color: #6b7280; font-size: 11px; }
 .fc .fc-daygrid-day.fc-day-today { background: #eff6ff; }
 .fc .fc-daygrid-day:hover { background: #f8fafc; cursor: pointer; }
+.fc-title-with-square {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.fc-status-square {
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    display: inline-block;
+    flex: 0 0 8px;
+    border: 1px solid transparent;
+}
 
 /* ── Legend ── */
 .cal-legend { display: flex; gap: 1rem; font-size: 12px; flex-wrap: wrap; }
@@ -140,8 +154,17 @@
 
 {% block content %}
 <div class="page-header">
-    <h1><i class="bi bi-calendar3 me-2"></i>Календарь смен</h1>
+    <h1>
+        <i class="bi bi-calendar3 me-2"></i>
+        {% if reserve_mode %}График резерва{% else %}Календарь смен{% endif %}
+    </h1>
     <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="/shifts/calendar" class="btn btn-sm {% if not reserve_mode %}btn-dark{% else %}btn-outline-dark{% endif %}">
+            <i class="bi bi-calendar3 me-1"></i>Общий график
+        </a>
+        <a href="/shifts/reserve" class="btn btn-sm {% if reserve_mode %}btn-dark{% else %}btn-outline-dark{% endif %}">
+            <i class="bi bi-person-check me-1"></i>Резерв
+        </a>
         <select id="pointFilter" class="form-select form-select-sm" style="width:auto;min-width:180px">
             <option value="0">Все точки</option>
             {% for p in points %}
@@ -149,8 +172,13 @@
             {% endfor %}
         </select>
         <button class="btn btn-warning btn-sm" id="btnBook">
-            <i class="bi bi-plus-circle me-1"></i>Забронировать смену
+            <i class="bi bi-plus-circle me-1"></i>{% if reserve_mode %}Добавить в резерв{% else %}Забронировать смену{% endif %}
         </button>
+        {% if not reserve_mode %}
+        <button class="btn btn-outline-warning btn-sm" id="btnBookReserveExit">
+            <i class="bi bi-person-up me-1"></i>Резервный выход
+        </button>
+        {% endif %}
         <button class="btn btn-primary btn-sm" id="btnFillSchedule">
             <i class="bi bi-calendar2-plus me-1"></i>Заполнить график
         </button>
@@ -162,16 +190,21 @@
 
 {# Legend #}
 <div class="cal-legend mb-3">
+    {% if not reserve_mode %}
     <span><i style="background:#3b82f6"></i>Открытая смена</span>
     <span><i style="background:#10b981"></i>Закрытая смена</span>
     <span><i style="background:#f59e0b"></i>Запланированная</span>
-    <span><i style="background:#fef3c7;border:1px solid #d97706"></i>Резерв +400 ₽ / Подмена +500 ₽</span>
+    {% endif %}
+    <span><i style="background:#fef3c7;border:1px solid #d97706"></i>Резерв +400 ₽/дежурство</span>
+    <span><i style="background:#e0f2fe;border:1px solid #0284c7"></i>Резервный выход +500 ₽/выход</span>
 </div>
 
 <div id="fillModePanel" class="fill-mode-panel">
     <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
         <div>
-            <div class="fw-semibold">Заполнение графика по клику на даты</div>
+            <div class="fw-semibold">
+                {% if reserve_mode %}Заполнение резерва по клику на даты{% else %}Заполнение графика по клику на даты{% endif %}
+            </div>
             <div class="fill-mode-hint">Выберите ПВЗ и сотрудника, затем нажимайте на даты в календаре.</div>
         </div>
         <button class="btn btn-outline-secondary btn-sm" id="fillModeClose">
@@ -210,7 +243,7 @@
                 </div>
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" value="1" id="fillSubstitution">
-                    <label class="form-check-label small" for="fillSubstitution">Подмена (+500 ₽/выход)</label>
+                    <label class="form-check-label small" for="fillSubstitution">Резервный выход (+500 ₽/выход)</label>
                 </div>
             </div>
         </div>
@@ -247,7 +280,7 @@
 <div id="bookModalBackdrop"></div>
 <div id="bookModal">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h6 class="mb-0 fw-bold"><i class="bi bi-plus-circle me-2 text-warning"></i>Забронировать смену</h6>
+        <h6 class="mb-0 fw-bold"><i class="bi bi-plus-circle me-2 text-warning"></i>{% if reserve_mode %}Добавить в резерв{% else %}Забронировать смену{% endif %}</h6>
         <button type="button" class="btn-close" id="bookModalClose"></button>
     </div>
     <div class="mb-3">
@@ -285,7 +318,7 @@
             </div>
             <div class="form-check">
                 <input class="form-check-input" type="checkbox" value="1" id="bookSubstitution">
-                <label class="form-check-label small" for="bookSubstitution">Подмена (+500 ₽/выход)</label>
+                <label class="form-check-label small" for="bookSubstitution">Резервный выход (+500 ₽/выход)</label>
             </div>
         </div>
     </div>
@@ -305,6 +338,7 @@
 (function () {
     var calendarEl  = document.getElementById('calendar');
     var pointFilter = document.getElementById('pointFilter');
+    var reserveMode = {{ 'true' if reserve_mode else 'false' }};
     var fillMode = { active: false, busy: false };
 
     /* ── Popup ── */
@@ -320,18 +354,31 @@
     /* ── Book modal ── */
     var bookModal         = document.getElementById('bookModal');
     var bookModalBackdrop = document.getElementById('bookModalBackdrop');
+    var bookReserveInput  = document.getElementById('bookReserve');
+    if (reserveMode) {
+        bookReserveInput.checked = true;
+        bookReserveInput.disabled = true;
+    }
     function closeBook() {
         bookModal.style.display = 'none';
         bookModalBackdrop.style.display = 'none';
         document.getElementById('bookError').style.display = 'none';
     }
-    function openBook(dateStr) {
+    function openBook(dateStr, preset) {
         document.getElementById('bookDate').value  = dateStr || '';
         document.getElementById('bookUser').value  = '';
         document.getElementById('bookPoint').value = '';
         document.getElementById('bookNotes').value = '';
-        document.getElementById('bookReserve').checked = false;
-        document.getElementById('bookSubstitution').checked = false;
+        var reserveVal = reserveMode;
+        var reserveExitVal = false;
+        if (preset && typeof preset.isReserve !== 'undefined') {
+            reserveVal = !!preset.isReserve;
+        }
+        if (preset && typeof preset.isReserveExit !== 'undefined') {
+            reserveExitVal = !!preset.isReserveExit;
+        }
+        document.getElementById('bookReserve').checked = reserveVal;
+        document.getElementById('bookSubstitution').checked = reserveExitVal;
         document.getElementById('bookError').style.display = 'none';
         bookModalBackdrop.style.display = 'block';
         bookModal.style.display = 'block';
@@ -340,8 +387,14 @@
     document.getElementById('bookCancel').addEventListener('click', closeBook);
     bookModalBackdrop.addEventListener('click', closeBook);
     document.getElementById('btnBook').addEventListener('click', function () {
-        openBook('');
+        openBook('', { isReserve: reserveMode, isReserveExit: false });
     });
+    var btnBookReserveExit = document.getElementById('btnBookReserveExit');
+    if (btnBookReserveExit) {
+        btnBookReserveExit.addEventListener('click', function () {
+            openBook('', { isReserve: false, isReserveExit: true });
+        });
+    }
 
     document.getElementById('bookSave').addEventListener('click', function () {
         var dateVal  = document.getElementById('bookDate').value;
@@ -398,6 +451,11 @@
     var btnFill       = document.getElementById('btnFillSchedule');
     var btnFillClose  = document.getElementById('fillModeClose');
 
+    if (reserveMode) {
+        fillReserve.checked = true;
+        fillReserve.disabled = true;
+    }
+
     function setFillStatus(text, kind) {
         fillStatus.textContent = text || '';
         fillStatus.classList.remove('ok', 'err');
@@ -434,7 +492,7 @@
             userId: Number(fillUser.value || 0),
             pointId: Number(fillPoint.value || 0),
             notes: fillNotes.value.trim(),
-            isReserve: fillReserve.checked,
+            isReserve: reserveMode ? true : fillReserve.checked,
             isSubstitution: fillSubst.checked,
             userLabel: fillUser.options[fillUser.selectedIndex] ? fillUser.options[fillUser.selectedIndex].text : '',
             pointLabel: fillPoint.options[fillPoint.selectedIndex] ? fillPoint.options[fillPoint.selectedIndex].text : '',
@@ -540,6 +598,16 @@
     /* ── Calendar ── */
     var stateLabels = { open: 'Открыта', closed: 'Закрыта' };
 
+    function markerColorForEvent(props) {
+        if (props.kind === 'actual') {
+            return props.state === 'closed' ? '#10b981' : '#3b82f6';
+        }
+        if (props.kind === 'planned' && props.is_reserve) {
+            return '#f59e0b';
+        }
+        return '#d97706';
+    }
+
     var calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         locale: 'ru',
@@ -561,6 +629,20 @@
         dayMaxEvents: 5,
         moreLinkText: function (n) { return '+' + n + ' ещё'; },
         noEventsText: 'Нет смен за этот период',
+        eventDidMount: function (info) {
+            var p = info.event.extendedProps || {};
+            var titleContainer = info.el.querySelector('.fc-event-title-container');
+            if (!titleContainer) return;
+            if (titleContainer.querySelector('.fc-status-square')) return;
+
+            titleContainer.classList.add('fc-title-with-square');
+            var marker = document.createElement('span');
+            var markerColor = markerColorForEvent(p);
+            marker.className = 'fc-status-square';
+            marker.style.backgroundColor = markerColor;
+            marker.style.borderColor = markerColor;
+            titleContainer.prepend(marker);
+        },
 
         events: function (info, successCb, failureCb) {
             var pid = pointFilter.value || '0';
@@ -569,6 +651,7 @@
                 + '?start='    + encodeURIComponent(info.startStr)
                 + '&end='      + encodeURIComponent(info.endStr)
                 + '&point_id=' + pid
+                + '&only_reserve=' + (reserveMode ? '1' : '0')
             )
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -607,7 +690,7 @@
                 durRow.style.display      = 'none';
                 var extras = [];
                 if (p.is_reserve) extras.push('Резерв (+400 ₽)');
-                if (p.is_substitution) extras.push('Подмена (+500 ₽)');
+                if (p.is_substitution) extras.push('Резервный выход (+500 ₽)');
                 bonusRow.style.display = extras.length ? '' : 'none';
                 document.getElementById('popupBonus').textContent = extras.join(', ');
                 notesRow.style.display    = p.notes ? '' : 'none';

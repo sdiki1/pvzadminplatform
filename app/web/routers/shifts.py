@@ -28,6 +28,7 @@ async def list_shifts(
     employee_id: int = 0,
     date_from: str = "",
     date_to: str = "",
+    show_reserve: int = 0,
     page: int = 1,
 ):
     per_page = 30
@@ -58,6 +59,20 @@ async def list_shifts(
     users_result = await db.execute(select(User))
     users_map = {u.id: u for u in users_result.scalars().all()}
 
+    reserve_items: list[PlannedShift] = []
+    if show_reserve:
+        reserve_query = select(PlannedShift).where(PlannedShift.is_reserve == True)
+        if point_id:
+            reserve_query = reserve_query.where(PlannedShift.point_id == point_id)
+        if employee_id:
+            reserve_query = reserve_query.where(PlannedShift.user_id == employee_id)
+        if parsed_date_from:
+            reserve_query = reserve_query.where(PlannedShift.shift_date >= parsed_date_from)
+        if parsed_date_to:
+            reserve_query = reserve_query.where(PlannedShift.shift_date <= parsed_date_to)
+        reserve_query = reserve_query.order_by(PlannedShift.shift_date.desc(), PlannedShift.id.desc())
+        reserve_items = (await db.execute(reserve_query)).scalars().all()
+
     return templates.TemplateResponse(request, "shifts/list.html", {
         "current_user": current_user,
         "active_page": "shifts",
@@ -72,6 +87,8 @@ async def list_shifts(
         "employee_id": employee_id,
         "date_from": date_from,
         "date_to": date_to,
+        "show_reserve": bool(show_reserve),
+        "reserve_items": reserve_items,
         "shift_state_labels": {"open": "Открыта", "closed": "Закрыта"},
     })
 
@@ -95,6 +112,30 @@ async def shift_calendar(
         "active_page": "shifts",
         "points": points,
         "users": users,
+        "reserve_mode": False,
+    })
+
+
+@router.get("/reserve", response_class=HTMLResponse)
+async def reserve_calendar(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    points_result = await db.execute(select(Point).where(Point.is_active == True).order_by(Point.name))
+    points = points_result.scalars().all()
+
+    users_result = await db.execute(
+        select(User).where(User.is_active == True).order_by(User.full_name)
+    )
+    users = users_result.scalars().all()
+
+    return templates.TemplateResponse(request, "shifts/calendar.html", {
+        "current_user": current_user,
+        "active_page": "shifts",
+        "points": points,
+        "users": users,
+        "reserve_mode": True,
     })
 
 
@@ -105,6 +146,7 @@ async def shift_events(
     start: str = "",
     end: str = "",
     point_id: int = 0,
+    only_reserve: int = 0,
 ):
     def _parse_date(s: str) -> date | None:
         if not s:
@@ -116,17 +158,19 @@ async def shift_events(
 
     d_start = _parse_date(start)
     d_end = _parse_date(end)
+    reserve_mode = bool(only_reserve)
 
     # --- Actual shifts ---
-    q = select(Shift)
-    if d_start:
-        q = q.where(Shift.shift_date >= d_start)
-    if d_end:
-        q = q.where(Shift.shift_date <= d_end)
-    if point_id:
-        q = q.where(Shift.point_id == point_id)
-
-    shifts = (await db.execute(q)).scalars().all()
+    shifts: list[Shift] = []
+    if not reserve_mode:
+        q = select(Shift)
+        if d_start:
+            q = q.where(Shift.shift_date >= d_start)
+        if d_end:
+            q = q.where(Shift.shift_date <= d_end)
+        if point_id:
+            q = q.where(Shift.point_id == point_id)
+        shifts = (await db.execute(q)).scalars().all()
 
     # --- Planned shifts ---
     pq = select(PlannedShift)
@@ -136,6 +180,8 @@ async def shift_events(
         pq = pq.where(PlannedShift.shift_date <= d_end)
     if point_id:
         pq = pq.where(PlannedShift.point_id == point_id)
+    if reserve_mode:
+        pq = pq.where(PlannedShift.is_reserve == True)
 
     planned = (await db.execute(pq)).scalars().all()
 
@@ -193,7 +239,7 @@ async def shift_events(
         if p.is_reserve:
             title_parts.append("РЕЗЕРВ")
         if p.is_substitution:
-            title_parts.append("ПОДМЕНА")
+            title_parts.append("РЕЗ.ВЫХОД")
         # Planned: use user color with amber tint if no personal color
         planned_color = (user.color if user and getattr(user, "color", None) else "#f59e0b")
         events.append({
