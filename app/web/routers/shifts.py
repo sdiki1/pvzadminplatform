@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -16,8 +15,6 @@ from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-TZ = ZoneInfo("Asia/Yekaterinburg")
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
@@ -273,7 +270,6 @@ async def create_planned_shift(
             is_reserve=is_reserve,
             is_substitution=is_substitution,
             notes=notes,
-            created_at=datetime.now(TZ),
         )
         db.add(ps)
 
