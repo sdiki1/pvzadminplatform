@@ -25,17 +25,23 @@ async def run() -> None:
     settings = get_settings()
     await init_db()
 
-    # ── Bot setup ──────────────────────────────────────────────
-    bot = Bot(
-        token=settings.bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
-    dp = Dispatcher(storage=MemoryStorage())
-    dp.include_router(employee_router)
-    dp.include_router(admin_router)
+    # ── Bot setup (optional) ───────────────────────────────────
+    bot = None
+    dp = None
+    scheduler = None
+    if settings.bot_polling_enabled:
+        bot = Bot(
+            token=settings.bot_token,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+        dp = Dispatcher(storage=MemoryStorage())
+        dp.include_router(employee_router)
+        dp.include_router(admin_router)
 
-    scheduler = BotScheduler(bot=bot, session_factory=SessionLocal, settings=settings)
-    scheduler.start()
+        scheduler = BotScheduler(bot=bot, session_factory=SessionLocal, settings=settings)
+        scheduler.start()
+    else:
+        log.info("Bot polling disabled (BOT_POLLING_ENABLED=false)")
 
     # ── Web setup ──────────────────────────────────────────────
     import uvicorn
@@ -63,6 +69,8 @@ async def run() -> None:
         loop.add_signal_handler(sig, shutdown_event.set)
 
     async def run_bot() -> None:
+        if not dp or not bot:
+            return
         log.info("Bot polling started")
         try:
             await dp.start_polling(bot)
@@ -83,22 +91,26 @@ async def run() -> None:
     async def run_watchdog() -> None:
         await shutdown_event.wait()
         log.info("Shutdown signal received, stopping services …")
-        # Stop bot polling gracefully
-        await dp.stop_polling()
+        # Stop bot polling gracefully (if enabled)
+        if dp:
+            await dp.stop_polling()
         # Stop uvicorn
         uvi_server.should_exit = True
 
     tasks = [
-        asyncio.create_task(run_bot(), name="bot"),
         asyncio.create_task(run_web(), name="web"),
         asyncio.create_task(run_watchdog(), name="watchdog"),
     ]
+    if dp and bot:
+        tasks.insert(0, asyncio.create_task(run_bot(), name="bot"))
 
     try:
         await asyncio.gather(*tasks)
     finally:
-        scheduler.shutdown()
-        await bot.session.close()
+        if scheduler:
+            scheduler.shutdown()
+        if bot:
+            await bot.session.close()
         log.info("All services stopped")
 
 

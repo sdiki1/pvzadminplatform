@@ -17,6 +17,7 @@ from app.db.models import (
     SOSIncident,
     WebUser,
 )
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -34,6 +35,9 @@ async def reports_index(
     date_to: str = "",
     point_id: int = 0,
 ):
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
+
     points_result = await db.execute(select(Point).where(Point.is_active == True))
     points = points_result.scalars().all()
 
@@ -44,18 +48,18 @@ async def reports_index(
     appeals_q = select(func.count(Appeal.id))
     deliveries_q = select(func.sum(PointDeliveryStat.total_count))
 
-    if date_from:
-        shifts_q = shifts_q.where(Shift.shift_date >= date_from)
-        defects_q = defects_q.where(DefectIncident.incident_date >= date_from)
-        sos_q = sos_q.where(SOSIncident.incident_date >= date_from)
-        appeals_q = appeals_q.where(Appeal.case_date >= date_from)
-        deliveries_q = deliveries_q.where(PointDeliveryStat.stat_date >= date_from)
-    if date_to:
-        shifts_q = shifts_q.where(Shift.shift_date <= date_to)
-        defects_q = defects_q.where(DefectIncident.incident_date <= date_to)
-        sos_q = sos_q.where(SOSIncident.incident_date <= date_to)
-        appeals_q = appeals_q.where(Appeal.case_date <= date_to)
-        deliveries_q = deliveries_q.where(PointDeliveryStat.stat_date <= date_to)
+    if parsed_date_from:
+        shifts_q = shifts_q.where(Shift.shift_date >= parsed_date_from)
+        defects_q = defects_q.where(DefectIncident.incident_date >= parsed_date_from)
+        sos_q = sos_q.where(SOSIncident.incident_date >= parsed_date_from)
+        appeals_q = appeals_q.where(Appeal.case_date >= parsed_date_from)
+        deliveries_q = deliveries_q.where(PointDeliveryStat.stat_date >= parsed_date_from)
+    if parsed_date_to:
+        shifts_q = shifts_q.where(Shift.shift_date <= parsed_date_to)
+        defects_q = defects_q.where(DefectIncident.incident_date <= parsed_date_to)
+        sos_q = sos_q.where(SOSIncident.incident_date <= parsed_date_to)
+        appeals_q = appeals_q.where(Appeal.case_date <= parsed_date_to)
+        deliveries_q = deliveries_q.where(PointDeliveryStat.stat_date <= parsed_date_to)
     if point_id:
         shifts_q = shifts_q.where(Shift.point_id == point_id)
         defects_q = defects_q.where(DefectIncident.point_id == point_id)

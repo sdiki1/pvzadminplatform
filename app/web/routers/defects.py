@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -9,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import DefectIncident, Point, User, WebUser
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -80,6 +82,8 @@ async def list_defects(
 ):
     per_page = 25
     query = select(DefectIncident)
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
 
     if point_id:
         query = query.where(DefectIncident.point_id == point_id)
@@ -87,10 +91,10 @@ async def list_defects(
         query = query.where(DefectIncident.status == status)
     if incident_type:
         query = query.where(DefectIncident.incident_type == incident_type)
-    if date_from:
-        query = query.where(DefectIncident.incident_date >= date_from)
-    if date_to:
-        query = query.where(DefectIncident.incident_date <= date_to)
+    if parsed_date_from:
+        query = query.where(DefectIncident.incident_date >= parsed_date_from)
+    if parsed_date_to:
+        query = query.where(DefectIncident.incident_date <= parsed_date_to)
     if search:
         query = query.where(
             DefectIncident.barcode.ilike(f"%{search}%")
@@ -160,6 +164,7 @@ async def create_defect(
     current_user: WebUser = Depends(get_current_user),
 ):
     form = await request.form()
+    incident_date = parse_date(form.get("incident_date")) or date.today()
 
     amount = None
     raw_amount = form.get("amount", "").strip()
@@ -171,7 +176,7 @@ async def create_defect(
 
     incident = DefectIncident(
         point_id=int(form["point_id"]),
-        incident_date=form["incident_date"],
+        incident_date=incident_date,
         detected_by_role=form.get("detected_by_role", "unknown"),
         detected_stage=form.get("detected_stage", "other"),
         incident_type=form.get("incident_type", "other"),
@@ -265,7 +270,7 @@ async def update_defect(
 
     form = await request.form()
     item.point_id = int(form["point_id"])
-    item.incident_date = form["incident_date"]
+    item.incident_date = parse_date(form.get("incident_date")) or item.incident_date
     item.detected_by_role = form.get("detected_by_role", "unknown")
     item.detected_stage = form.get("detected_stage", "other")
     item.incident_type = form.get("incident_type", "other")

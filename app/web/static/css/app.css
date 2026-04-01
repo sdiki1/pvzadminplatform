@@ -151,6 +151,13 @@ body {
 .badge-status-resolved { background: #d1fae5; color: #065f46; }
 .badge-status-closed { background: #f1f5f9; color: #475569; }
 .badge-status-cancelled { background: #fee2e2; color: #991b1b; }
+.badge-status-ordered { background: #ffedd5; color: #9a3412; }
+.badge-status-partially_ordered { background: #fde68a; color: #92400e; }
+.badge-status-in_transit { background: #e0e7ff; color: #3730a3; }
+.badge-status-delivered { background: #dcfce7; color: #166534; }
+.badge-status-requested { background: #dbeafe; color: #1d4ed8; }
+.badge-status-in_stock { background: #ecfccb; color: #3f6212; }
+.badge-status-not_needed { background: #f8fafc; color: #475569; }
 .badge-status-appealed { background: #d1fae5; color: #065f46; }
 .badge-status-not_appealed { background: #fee2e2; color: #991b1b; }
 

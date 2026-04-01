@@ -37,18 +37,26 @@
 
 <div class="table-container">
     <table class="table">
-        <thead><tr><th>ID</th><th>Дата</th><th>Точка</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Дата</th><th>Точка</th><th>Позиций</th><th>Статус</th><th></th></tr></thead>
         <tbody>
             {% for item in items %}
             <tr>
                 <td>{{ item.id }}</td>
                 <td>{{ item.request_date.strftime('%d.%m.%Y') }}</td>
                 <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
+                <td>
+                    {% set cnt = items_count_map.get(item.id, 0) %}
+                    {% if cnt %}
+                    <span class="badge bg-secondary">{{ cnt }} шт.</span>
+                    {% else %}
+                    <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
                 <td><span class="badge badge-status-{{ item.status }}">{{ request_status_labels.get(item.status, item.status) }}</span></td>
                 <td><a href="/supplies/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
             </tr>
             {% else %}
-            <tr><td colspan="5" class="text-center text-muted py-4">Нет записей</td></tr>
+            <tr><td colspan="6" class="text-center text-muted py-4">Нет записей</td></tr>
             {% endfor %}
         </tbody>
     </table>

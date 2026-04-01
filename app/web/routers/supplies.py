@@ -39,9 +39,13 @@ REQUEST_STATUSES = [
 REQUEST_STATUS_LABELS = dict(REQUEST_STATUSES)
 
 LINE_ITEM_STATUS_LABELS = {
+    "not_needed": "Не требуется",
     "requested": "Запрошено",
+    "ordered": "Заказано",
+    "in_transit": "В пути",
     "approved": "Подтверждено",
     "delivered": "Выдано",
+    "in_stock": "Есть в наличии",
     "cancelled": "Отменено",
 }
 
@@ -74,6 +78,17 @@ async def list_supplies(
     points = points_result.scalars().all()
     points_map = {p.id: p for p in points}
 
+    # Count ordered line items per request
+    request_ids = [i.id for i in items]
+    items_count_map: dict[int, int] = {}
+    if request_ids:
+        counts_result = await db.execute(
+            select(SupplyRequestItem.request_id, func.count(SupplyRequestItem.id))
+            .where(SupplyRequestItem.request_id.in_(request_ids))
+            .group_by(SupplyRequestItem.request_id)
+        )
+        items_count_map = {row[0]: row[1] for row in counts_result.all()}
+
     return templates.TemplateResponse(request, "supplies/list.html", {"current_user": current_user,
         "active_page": "supplies",
         "items": items,
@@ -85,7 +100,8 @@ async def list_supplies(
         "point_id": point_id,
         "status": status,
         "statuses": REQUEST_STATUSES,
-        "request_status_labels": REQUEST_STATUS_LABELS})
+        "request_status_labels": REQUEST_STATUS_LABELS,
+        "items_count_map": items_count_map})
 
 
 @router.get("/catalog", response_class=HTMLResponse)

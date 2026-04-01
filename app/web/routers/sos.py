@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Point, SOSIncident, User, WebUser
+from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -41,15 +42,17 @@ async def list_sos(
 ):
     per_page = 25
     query = select(SOSIncident)
+    parsed_date_from = parse_date(date_from) if date_from else None
+    parsed_date_to = parse_date(date_to) if date_to else None
 
     if point_id:
         query = query.where(SOSIncident.point_id == point_id)
     if status:
         query = query.where(SOSIncident.status == status)
-    if date_from:
-        query = query.where(SOSIncident.incident_date >= date_from)
-    if date_to:
-        query = query.where(SOSIncident.incident_date <= date_to)
+    if parsed_date_from:
+        query = query.where(SOSIncident.incident_date >= parsed_date_from)
+    if parsed_date_to:
+        query = query.where(SOSIncident.incident_date <= parsed_date_to)
     if search:
         query = query.where(
             SOSIncident.description.ilike(f"%{search}%")
@@ -113,6 +116,7 @@ async def create_sos(
     current_user: WebUser = Depends(get_current_user),
 ):
     form = await request.form()
+    incident_date = parse_date(form.get("incident_date")) or date.today()
 
     amount = None
     raw_amount = form.get("total_amount", "").strip()
@@ -124,7 +128,7 @@ async def create_sos(
 
     incident = SOSIncident(
         point_id=int(form["point_id"]),
-        incident_date=form["incident_date"],
+        incident_date=incident_date,
         description=form.get("description", "").strip(),
         client_name=form.get("client_name", "").strip() or None,
         client_phone=form.get("client_phone", "").strip() or None,
@@ -209,7 +213,7 @@ async def update_sos(
 
     form = await request.form()
     item.point_id = int(form["point_id"])
-    item.incident_date = form["incident_date"]
+    item.incident_date = parse_date(form.get("incident_date")) or item.incident_date
     item.description = form.get("description", "").strip()
     item.client_name = form.get("client_name", "").strip() or None
     item.client_phone = form.get("client_phone", "").strip() or None

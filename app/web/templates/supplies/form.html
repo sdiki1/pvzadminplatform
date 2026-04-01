@@ -42,9 +42,25 @@
 }
 .supply-item-card.ordered .supply-item-qty { display: flex; align-items: center; gap: 6px; }
 .supply-item-qty input {
-    width: 80px;
+    width: 56px;
     text-align: center;
+    -moz-appearance: textfield;
 }
+.supply-item-qty input::-webkit-outer-spin-button,
+.supply-item-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.qty-btn {
+    width: 28px; height: 28px;
+    border: 1px solid #d1d5db;
+    background: #f9fafb;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    user-select: none;
+}
+.qty-btn:hover { background: #e5e7eb; }
 .all-good-btn {
     border: 2px solid #10b981;
     color: #059669;
@@ -116,13 +132,14 @@
                         <div class="supply-item-name">{{ si.name }}</div>
                         <div class="supply-item-unit">{{ si.unit }}</div>
                     </div>
-                    <div class="supply-item-qty">
-                        <input type="number" step="0.01" min="0"
+                    <div class="supply-item-qty" onclick="event.stopPropagation()">
+                        <button type="button" class="qty-btn" onclick="stepQty({{ si.id }}, -1)">−</button>
+                        <input type="number" step="1" min="1"
                                name="qty_{{ si.id }}"
                                id="qty_{{ si.id }}"
                                class="form-control form-control-sm"
-                               placeholder="Кол-во"
-                               onclick="event.stopPropagation()">
+                               value="1">
+                        <button type="button" class="qty-btn" onclick="stepQty({{ si.id }}, 1)">+</button>
                         <span class="small text-muted">{{ si.unit }}</span>
                     </div>
                 </div>
@@ -149,13 +166,14 @@
                         <div class="supply-item-name">{{ si.name }}</div>
                         <div class="supply-item-unit">{{ si.unit }}</div>
                     </div>
-                    <div class="supply-item-qty">
-                        <input type="number" step="0.01" min="0"
+                    <div class="supply-item-qty" onclick="event.stopPropagation()">
+                        <button type="button" class="qty-btn" onclick="stepQty({{ si.id }}, -1)">−</button>
+                        <input type="number" step="1" min="1"
                                name="qty_{{ si.id }}"
                                id="qty_{{ si.id }}"
                                class="form-control form-control-sm"
-                               placeholder="Кол-во"
-                               onclick="event.stopPropagation()">
+                               value="1">
+                        <button type="button" class="qty-btn" onclick="stepQty({{ si.id }}, 1)">+</button>
                         <span class="small text-muted">{{ si.unit }}</span>
                     </div>
                 </div>
@@ -182,6 +200,13 @@
 
 {% block extra_js %}
 <script>
+function stepQty(id, delta) {
+    var inp = document.getElementById('qty_' + id);
+    var val = parseInt(inp.value || '1') + delta;
+    if (val < 1) val = 1;
+    inp.value = val;
+}
+
 var orderedItems = new Set();
 var itemNames = {};
 

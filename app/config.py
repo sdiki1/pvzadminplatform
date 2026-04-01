@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     bot_token: str = Field(alias="BOT_TOKEN")
+    bot_polling_enabled: bool = Field(default=True, alias="BOT_POLLING_ENABLED")
     database_url: str = Field(default="postgresql+asyncpg://pvz:pvz@localhost:5432/pvz", alias="DATABASE_URL")
     timezone: str = Field(default="Asia/Yekaterinburg", alias="TIMEZONE")
 
