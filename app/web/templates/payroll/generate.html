@@ -41,7 +41,7 @@
                         <ul class="mb-0 mt-1">
                             <li>Тип 1 — управление пунктами: <strong>10 000 ₽</strong></li>
                             <li>Тип 2 — инвентаризации: <strong>5 000 ₽</strong></li>
-                            <li>Тип 3 — тикеты оспаривания (1–31 месяца): кол-во &times; <strong>200 ₽</strong></li>
+                            <li>Тип 3 — любые тикеты из раздела "Оспаривания" (1–31 месяца): кол-во &times; <strong>{{ manager_bonus_3_per_ticket | int }} ₽</strong></li>
                         </ul>
                     </div>
 
@@ -82,7 +82,7 @@
                     <tr><td class="text-muted">Бонус выдача</td><td>Каждые 100 выдач &rarr; +100 ₽</td></tr>
                     <tr><td class="text-muted">Удержания</td><td>Не оспоренные товары</td></tr>
                     <tr><td class="text-muted">Корректировки</td><td>Ручные премии/удержания</td></tr>
-                    <tr class="table-warning"><td class="text-muted">Бонус мен. (10-е)</td><td>Тип 1: 10000₽, Тип 2: 5000₽, Тип 3: тикеты&times;200₽</td></tr>
+                    <tr class="table-warning"><td class="text-muted">Бонус мен. (10-е)</td><td>Тип 1: 10000₽, Тип 2: 5000₽, Тип 3: любые тикеты &times; {{ manager_bonus_3_per_ticket | int }}₽</td></tr>
                 </table>
             </div>
         </div>

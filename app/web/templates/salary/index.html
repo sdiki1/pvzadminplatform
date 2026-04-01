@@ -72,7 +72,7 @@
             <ul class="mb-0 ps-3" style="font-size:13px">
                 <li>Тип 1: +{{ manager_bonus_1 | int }} ₽ фикс.</li>
                 <li>Тип 2: +{{ manager_bonus_2 | int }} ₽ фикс.</li>
-                <li>Тип 3: +{{ manager_bonus_3_per_ticket | int }} ₽ × кол-во тикетов</li>
+                <li>Тип 3: +{{ manager_bonus_3_per_ticket | int }} ₽ × кол-во любых тикетов (из раздела "Оспаривания")</li>
             </ul>
         </div>
     </div>
@@ -112,7 +112,7 @@
                     <option value="">Нет</option>
                     <option value="1" {% if user.manager_bonus_type == 1 %}selected{% endif %}>Тип 1 — {{ manager_bonus_1 | int }} ₽ фикс.</option>
                     <option value="2" {% if user.manager_bonus_type == 2 %}selected{% endif %}>Тип 2 — {{ manager_bonus_2 | int }} ₽ фикс.</option>
-                    <option value="3" {% if user.manager_bonus_type == 3 %}selected{% endif %}>Тип 3 — {{ manager_bonus_3_per_ticket | int }} ₽/тикет</option>
+                    <option value="3" {% if user.manager_bonus_type == 3 %}selected{% endif %}>Тип 3 — {{ manager_bonus_3_per_ticket | int }} ₽/любой тикет</option>
                 </select>
                 <button type="submit" class="btn btn-sm btn-outline-secondary"><i class="bi bi-check2"></i></button>
             </form>

@@ -52,6 +52,7 @@ async def generate_form(
 ):
     from app.utils.dates import payroll_period_for_payout
 
+    settings = get_settings()
     today = date.today()
     p10_start, p10_end = payroll_period_for_payout(10, today)
     p25_start, p25_end = payroll_period_for_payout(25, today)
@@ -64,6 +65,7 @@ async def generate_form(
         "p10_end": p10_end.isoformat(),
         "p25_start": p25_start.isoformat(),
         "p25_end": p25_end.isoformat(),
+        "manager_bonus_3_per_ticket": settings.manager_bonus_3_per_ticket,
         "error": None,
     })
 
@@ -83,10 +85,20 @@ async def generate_payroll(
         period_start = date.fromisoformat(period_start_str)
         period_end = date.fromisoformat(period_end_str)
     except (ValueError, TypeError):
+        from app.utils.dates import payroll_period_for_payout
+
+        today = date.today()
+        p10_start, p10_end = payroll_period_for_payout(10, today)
+        p25_start, p25_end = payroll_period_for_payout(25, today)
         return templates.TemplateResponse(request, "payroll/generate.html", {
             "current_user": current_user,
             "active_page": "payroll",
-            "today": date.today(),
+            "today": today,
+            "p10_start": p10_start.isoformat(),
+            "p10_end": p10_end.isoformat(),
+            "p25_start": p25_start.isoformat(),
+            "p25_end": p25_end.isoformat(),
+            "manager_bonus_3_per_ticket": get_settings().manager_bonus_3_per_ticket,
             "error": "Укажите корректные даты периода",
         })
 
@@ -173,6 +185,7 @@ async def view_employee_sheet(
         "run": run,
         "item": item,
         "employee": employee,
+        "manager_bonus_3_per_ticket": get_settings().manager_bonus_3_per_ticket,
     })
 
 

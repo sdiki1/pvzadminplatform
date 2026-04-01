@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
 from app.db.models import (
+    Appeal,
     AdjustmentType,
     ApprovalStatus,
     Base,
@@ -256,6 +257,93 @@ async def test_issued_bonus_full_hundred_threshold() -> None:
 
         assert len(rows) == 1
         assert rows[0].issued_bonus_rub == Decimal("100.00")
+
+
+@pytest.mark.asyncio
+async def test_manager_bonus_type3_uses_all_tickets_from_appeals_table() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    settings = Settings(
+        BOT_TOKEN="123:token",
+        ADMIN_IDS="",
+        DATABASE_URL="sqlite+aiosqlite:///:memory:",
+    )
+
+    async with Session() as session:
+        manager = User(
+            telegram_id=3001,
+            full_name="Иванов Иван",
+            last_name="Иванов",
+            manager_bonus_type=3,
+            shift_rate_rub=Decimal("2500"),
+        )
+        session.add(manager)
+        await session.flush()
+
+        point = Point(
+            name="WB Ленина 114",
+            address="Лесной, Ленина 114",
+            brand=BrandEnum.WB,
+            latitude=58.6352,
+            longitude=59.7852,
+            radius_m=150,
+            work_start=time(9, 0),
+            work_end=time(21, 0),
+            is_active=True,
+        )
+        session.add(point)
+        await session.flush()
+
+        session.add_all(
+            [
+                Appeal(
+                    case_date=date(2026, 3, 5),
+                    point_id=point.id,
+                    appeal_type="defect",
+                    barcode="111",
+                    ticket_number="T-100",
+                    amount=Decimal("100"),
+                    status="appealed",
+                    assigned_manager_employee_id=manager.id,
+                ),
+                Appeal(
+                    case_date=date(2026, 3, 7),
+                    point_id=point.id,
+                    appeal_type="substitution",
+                    barcode="222",
+                    ticket_number="T-101",
+                    amount=Decimal("200"),
+                    status="оспорено",
+                    assigned_manager_raw="Иванов",
+                ),
+                Appeal(
+                    case_date=date(2026, 3, 9),
+                    point_id=point.id,
+                    appeal_type="defect",
+                    barcode="333",
+                    ticket_number="T-102",
+                    amount=Decimal("300"),
+                    status="not_appealed",
+                    assigned_manager_employee_id=manager.id,
+                ),
+            ]
+        )
+        await session.commit()
+
+        payroll_service = PayrollService(session, settings)
+        _, rows = await payroll_service.run_payroll(
+            period_start=date(2026, 3, 16),
+            period_end=date(2026, 3, 31),
+            payout_day=10,
+            generated_by=None,
+        )
+
+        assert len(rows) == 1
+        assert rows[0].manager_bonus_rub == Decimal("600.00")
 
 
 def test_payroll_periods() -> None:

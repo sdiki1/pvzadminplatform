@@ -47,7 +47,25 @@ def _ensure_user_rate_columns(sync_conn) -> None:
         sync_conn.execute(text(stmt))
 
 
+def _ensure_appeal_columns(sync_conn) -> None:
+    """Lightweight schema patch for appeal fields added after initial release."""
+    try:
+        existing_cols = {c["name"] for c in inspect(sync_conn).get_columns("appeals")}
+    except Exception:
+        return
+
+    statements: list[str] = []
+    if "feedback_from_nadezhda" not in existing_cols:
+        statements.append("ALTER TABLE appeals ADD COLUMN feedback_from_nadezhda TEXT")
+    if "feedback_from_anna" not in existing_cols:
+        statements.append("ALTER TABLE appeals ADD COLUMN feedback_from_anna TEXT")
+
+    for stmt in statements:
+        sync_conn.execute(text(stmt))
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_user_rate_columns)
+        await conn.run_sync(_ensure_appeal_columns)

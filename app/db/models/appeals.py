@@ -42,6 +42,8 @@ class Appeal(Base):
     non_appeal_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     charge_to_manager: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     charge_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    feedback_from_nadezhda: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    feedback_from_anna: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     deadline_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     result_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

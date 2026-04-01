@@ -19,10 +19,13 @@
                 <tr><td class="text-muted">Тикет</td><td>{{ item.ticket_number or '-' }}</td></tr>
                 <tr><td class="text-muted">Сумма</td><td>{{ '%.2f руб.'|format(item.amount) if item.amount else '-' }}</td></tr>
                 <tr><td class="text-muted">Статус</td><td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td></tr>
-                <tr><td class="text-muted">Менеджер</td><td>{{ users_map.get(item.assigned_manager_employee_id).full_name if item.assigned_manager_employee_id and users_map.get(item.assigned_manager_employee_id) else (item.assigned_manager_raw or '-') }}</td></tr>
+                <tr><td class="text-muted">Фамилия менеджера</td><td>{{ users_map.get(item.assigned_manager_employee_id).full_name if item.assigned_manager_employee_id and users_map.get(item.assigned_manager_employee_id) else (item.assigned_manager_raw or '-') }}</td></tr>
                 <tr><td class="text-muted">Списание</td><td>{% if item.charge_to_manager %}<span class="badge bg-danger">Да</span>{% else %}Нет{% endif %}</td></tr>
                 <tr><td class="text-muted">Дедлайн</td><td>{{ item.deadline_date.strftime('%d.%m.%Y') if item.deadline_date else '-' }}</td></tr>
                 {% if item.non_appeal_reason %}<tr><td class="text-muted">Причина</td><td>{{ item.non_appeal_reason }}</td></tr>{% endif %}
+                {% if item.charge_comment %}<tr><td class="text-muted">Списание (комментарий)</td><td>{{ item.charge_comment }}</td></tr>{% endif %}
+                {% if item.feedback_from_nadezhda %}<tr><td class="text-muted">ОС от Надежды</td><td>{{ item.feedback_from_nadezhda }}</td></tr>{% endif %}
+                {% if item.feedback_from_anna %}<tr><td class="text-muted">ОС от Анны</td><td>{{ item.feedback_from_anna }}</td></tr>{% endif %}
                 {% if item.result_comment %}<tr><td class="text-muted">Результат</td><td>{{ item.result_comment }}</td></tr>{% endif %}
             </table>
         </div>

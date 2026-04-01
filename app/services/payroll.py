@@ -6,10 +6,12 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.db.models import (
+    Appeal,
     ApprovalStatus,
     MotivationSource,
     PayrollItem,
@@ -288,14 +290,22 @@ class PayrollService:
     ) -> defaultdict[int, Decimal]:
         bonus_by_user: defaultdict[int, Decimal] = defaultdict(lambda: ZERO)
         month_start, month_end = month_bounds(period_end)
-        records = await self.motivation_repo.list_between_source(MotivationSource.MAIN, month_start, month_end)
+        appeals_result = await self.session.execute(
+            select(Appeal).where(
+                Appeal.case_date >= month_start,
+                Appeal.case_date <= month_end,
+            )
+        )
+        appeals = appeals_result.scalars().all()
 
         tickets_by_user: defaultdict[int, Decimal] = defaultdict(lambda: ZERO)
-        for rec in records:
-            user_id = rec.user_id or self._match_user_id_from_name(rec.manager_name, user_id_by_last_name)
+        for appeal in appeals:
+            user_id = appeal.assigned_manager_employee_id or self._match_user_id_from_name(
+                appeal.assigned_manager_raw, user_id_by_last_name
+            )
             if not user_id:
                 continue
-            tickets_by_user[user_id] += Decimal(rec.tickets_count or 0)
+            tickets_by_user[user_id] += Decimal("1")
 
         for user_id, user in users_map.items():
             if user.manager_bonus_type == 1:

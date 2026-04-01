@@ -24,14 +24,14 @@
                 <input type="date" class="form-control" name="case_date" required>
             </div>
             <div class="col-md-4">
-                <label class="form-label">Тип</label>
+                <label class="form-label">Тип оспаривания</label>
                 <select class="form-select" name="appeal_type">
                     {% for code, label in appeal_types %}
                     <option value="{{ code }}">{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-3"><label class="form-label">Штрихкод</label><input type="text" class="form-control" name="barcode"></div>
+            <div class="col-md-3"><label class="form-label">ШК</label><input type="text" class="form-control" name="barcode"></div>
             <div class="col-md-3"><label class="form-label">Тикет</label><input type="text" class="form-control" name="ticket_number"></div>
             <div class="col-md-3"><label class="form-label">Сумма</label><input type="text" class="form-control" name="amount"></div>
             <div class="col-md-3">
@@ -43,7 +43,7 @@
                 </select>
             </div>
             <div class="col-md-4">
-                <label class="form-label">Менеджер</label>
+                <label class="form-label">Менеджер (сотрудник)</label>
                 <select class="form-select" name="assigned_manager_employee_id">
                     <option value="">-</option>
                     {% for e in employees %}
@@ -51,6 +51,7 @@
                     {% endfor %}
                 </select>
             </div>
+            <div class="col-md-4"><label class="form-label">Фамилия менеджера (как в таблице)</label><input type="text" class="form-control" name="assigned_manager_raw"></div>
             <div class="col-md-4"><label class="form-label">Дедлайн</label><input type="date" class="form-control" name="deadline_date"></div>
             <div class="col-md-4">
                 <label class="form-label">&nbsp;</label>
@@ -59,8 +60,11 @@
                     <label class="form-check-label" for="charge_to_manager">Списание с менеджера</label>
                 </div>
             </div>
-            <div class="col-md-6"><label class="form-label">Причина (если не оспорено)</label><textarea class="form-control" name="non_appeal_reason" rows="2"></textarea></div>
-            <div class="col-md-6"><label class="form-label">Итоговый комментарий</label><textarea class="form-control" name="result_comment" rows="2"></textarea></div>
+            <div class="col-md-6"><label class="form-label">Причина, по которой тикет не оспорен</label><textarea class="form-control" name="non_appeal_reason" rows="2"></textarea></div>
+            <div class="col-md-6"><label class="form-label">Списание с менеджера (комментарий)</label><textarea class="form-control" name="charge_comment" rows="2"></textarea></div>
+            <div class="col-md-6"><label class="form-label">ОС от Надежды</label><textarea class="form-control" name="feedback_from_nadezhda" rows="2"></textarea></div>
+            <div class="col-md-6"><label class="form-label">ОС от Анны</label><textarea class="form-control" name="feedback_from_anna" rows="2"></textarea></div>
+            <div class="col-md-12"><label class="form-label">Итоговый комментарий</label><textarea class="form-control" name="result_comment" rows="2"></textarea></div>
         </div>
         <div class="mt-4">
             <button type="submit" class="btn btn-primary">Сохранить</button>

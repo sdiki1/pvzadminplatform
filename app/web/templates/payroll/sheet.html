@@ -75,7 +75,7 @@
                     <br><small class="text-muted">
                         {% if employee and employee.manager_bonus_type == 1 %}(управление пунктами)
                         {% elif employee and employee.manager_bonus_type == 2 %}(инвентаризации)
-                        {% elif employee and employee.manager_bonus_type == 3 %}(тикеты оспаривания &times; 200₽)
+                        {% elif employee and employee.manager_bonus_type == 3 %}(любые тикеты &times; {{ manager_bonus_3_per_ticket | int }}₽)
                         {% endif %}
                     </small>
                     {% endif %}

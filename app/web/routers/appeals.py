@@ -66,6 +66,7 @@ async def list_appeals(
         query = query.where(
             Appeal.barcode.ilike(f"%{search}%")
             | Appeal.ticket_number.ilike(f"%{search}%")
+            | Appeal.assigned_manager_raw.ilike(f"%{search}%")
         )
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
@@ -143,6 +144,23 @@ async def create_appeal(
         except ValueError:
             pass
 
+    assigned_manager_employee_id = None
+    raw_manager_id = str(form.get("assigned_manager_employee_id", "")).strip()
+    if raw_manager_id.isdigit():
+        assigned_manager_employee_id = int(raw_manager_id)
+
+    assigned_manager_raw = form.get("assigned_manager_raw", "").strip() or None
+    if not assigned_manager_employee_id and assigned_manager_raw:
+        manager_result = await db.execute(
+            select(User).where(
+                User.last_name.is_not(None),
+                User.last_name.ilike(assigned_manager_raw),
+            )
+        )
+        manager = manager_result.scalar_one_or_none()
+        if manager:
+            assigned_manager_employee_id = manager.id
+
     appeal = Appeal(
         case_date=form["case_date"],
         point_id=int(form["point_id"]),
@@ -151,10 +169,13 @@ async def create_appeal(
         ticket_number=form.get("ticket_number", "").strip() or None,
         amount=amount,
         status=form.get("status", "none"),
-        assigned_manager_employee_id=int(form["assigned_manager_employee_id"]) if form.get("assigned_manager_employee_id") else None,
+        assigned_manager_employee_id=assigned_manager_employee_id,
+        assigned_manager_raw=assigned_manager_raw,
         non_appeal_reason=form.get("non_appeal_reason", "").strip() or None,
         charge_to_manager=form.get("charge_to_manager") == "on",
         charge_comment=form.get("charge_comment", "").strip() or None,
+        feedback_from_nadezhda=form.get("feedback_from_nadezhda", "").strip() or None,
+        feedback_from_anna=form.get("feedback_from_anna", "").strip() or None,
         deadline_date=form.get("deadline_date") or None,
         result_comment=form.get("result_comment", "").strip() or None,
         created_by_user_id=current_user.id,

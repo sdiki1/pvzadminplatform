@@ -42,7 +42,7 @@
 
 <div class="table-container">
     <table class="table">
-        <thead><tr><th>Дата</th><th>Точка</th><th>Тип</th><th>ШК</th><th>Тикет</th><th>Сумма</th><th>Статус</th><th>Менеджер</th><th>Списание</th><th></th></tr></thead>
+        <thead><tr><th>Дата</th><th>Точка</th><th>Тип</th><th>ШК</th><th>Тикет</th><th>Сумма</th><th>Статус</th><th>Фамилия менеджера</th><th>Причина</th><th>Списание</th><th>ОС Надежды</th><th>ОС Анны</th><th></th></tr></thead>
         <tbody>
             {% for item in items %}
             <tr>
@@ -54,11 +54,14 @@
                 <td>{{ '%.2f'|format(item.amount) if item.amount else '-' }}</td>
                 <td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td>
                 <td>{{ users_map.get(item.assigned_manager_employee_id).full_name if item.assigned_manager_employee_id and users_map.get(item.assigned_manager_employee_id) else (item.assigned_manager_raw or '-') }}</td>
+                <td>{{ item.non_appeal_reason or '-' }}</td>
                 <td>{% if item.charge_to_manager %}<span class="badge bg-danger">Да</span>{% else %}-{% endif %}</td>
+                <td>{{ item.feedback_from_nadezhda or '-' }}</td>
+                <td>{{ item.feedback_from_anna or '-' }}</td>
                 <td><a href="/appeals/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
             </tr>
             {% else %}
-            <tr><td colspan="10" class="text-center text-muted py-4">Нет записей</td></tr>
+            <tr><td colspan="13" class="text-center text-muted py-4">Нет записей</td></tr>
             {% endfor %}
         </tbody>
     </table>
