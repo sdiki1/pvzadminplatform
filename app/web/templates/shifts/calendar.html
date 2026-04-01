@@ -86,6 +86,33 @@
     backdrop-filter: blur(2px);
 }
 
+/* ── Fill schedule mode panel ── */
+.fill-mode-panel {
+    display: none;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: .85rem .9rem;
+    margin-bottom: 1rem;
+}
+.fill-mode-panel.active {
+    display: block;
+}
+.fill-mode-hint {
+    font-size: 12px;
+    color: #475569;
+}
+.fill-mode-status {
+    font-size: 12px;
+    margin-top: .5rem;
+}
+.fill-mode-status.ok {
+    color: #166534;
+}
+.fill-mode-status.err {
+    color: #b91c1c;
+}
+
 .popup-badge {
     display: inline-block;
     padding: 2px 10px;
@@ -112,6 +139,9 @@
         <button class="btn btn-warning btn-sm" id="btnBook">
             <i class="bi bi-plus-circle me-1"></i>Забронировать смену
         </button>
+        <button class="btn btn-primary btn-sm" id="btnFillSchedule">
+            <i class="bi bi-calendar2-plus me-1"></i>Заполнить график
+        </button>
         <a href="/shifts" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-list"></i> Список
         </a>
@@ -123,6 +153,43 @@
     <span><i style="background:#3b82f6"></i>Открытая смена</span>
     <span><i style="background:#10b981"></i>Закрытая смена</span>
     <span><i style="background:#f59e0b"></i>Запланированная</span>
+</div>
+
+<div id="fillModePanel" class="fill-mode-panel">
+    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+        <div>
+            <div class="fw-semibold">Заполнение графика по клику на даты</div>
+            <div class="fill-mode-hint">Выберите ПВЗ и сотрудника, затем нажимайте на даты в календаре.</div>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" id="fillModeClose">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+    <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+            <label for="fillPoint" class="form-label small fw-semibold mb-1">ПВЗ</label>
+            <select id="fillPoint" class="form-select form-select-sm">
+                <option value="">— выберите —</option>
+                {% for p in points %}
+                <option value="{{ p.id }}">{{ p.short_name or p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label for="fillUser" class="form-label small fw-semibold mb-1">Сотрудник</label>
+            <select id="fillUser" class="form-select form-select-sm">
+                <option value="">— выберите —</option>
+                {% for u in users %}
+                <option value="{{ u.id }}">{{ u.full_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label for="fillNotes" class="form-label small fw-semibold mb-1">Заметка (необязательно)</label>
+            <input id="fillNotes" type="text" class="form-control form-control-sm" placeholder="например: подмена">
+        </div>
+    </div>
+    <div id="fillModeStatus" class="fill-mode-status"></div>
 </div>
 
 <div id="calendar"></div>
@@ -198,6 +265,7 @@
 (function () {
     var calendarEl  = document.getElementById('calendar');
     var pointFilter = document.getElementById('pointFilter');
+    var fillMode = { active: false, busy: false };
 
     /* ── Popup ── */
     var popup         = document.getElementById('shiftPopup');
@@ -268,10 +336,140 @@
         });
     });
 
+    /* ── Fill schedule mode ── */
+    var fillPanel     = document.getElementById('fillModePanel');
+    var fillStatus    = document.getElementById('fillModeStatus');
+    var fillPoint     = document.getElementById('fillPoint');
+    var fillUser      = document.getElementById('fillUser');
+    var fillNotes     = document.getElementById('fillNotes');
+    var btnFill       = document.getElementById('btnFillSchedule');
+    var btnFillClose  = document.getElementById('fillModeClose');
+
+    function setFillStatus(text, kind) {
+        fillStatus.textContent = text || '';
+        fillStatus.classList.remove('ok', 'err');
+        if (kind) fillStatus.classList.add(kind);
+    }
+
+    function openFillMode() {
+        fillMode.active = true;
+        fillPanel.classList.add('active');
+        if (pointFilter.value && pointFilter.value !== '0' && !fillPoint.value) {
+            fillPoint.value = pointFilter.value;
+        }
+        setFillStatus('Режим включён: нажимайте на даты в календаре.', 'ok');
+    }
+
+    function closeFillMode() {
+        fillMode.active = false;
+        fillPanel.classList.remove('active');
+        setFillStatus('', null);
+    }
+
+    btnFill.addEventListener('click', function () {
+        if (fillMode.active) {
+            closeFillMode();
+            return;
+        }
+        openFillMode();
+    });
+
+    btnFillClose.addEventListener('click', closeFillMode);
+
+    function getFillSelection() {
+        return {
+            userId: Number(fillUser.value || 0),
+            pointId: Number(fillPoint.value || 0),
+            notes: fillNotes.value.trim(),
+            userLabel: fillUser.options[fillUser.selectedIndex] ? fillUser.options[fillUser.selectedIndex].text : '',
+            pointLabel: fillPoint.options[fillPoint.selectedIndex] ? fillPoint.options[fillPoint.selectedIndex].text : '',
+        };
+    }
+
+    function findPlannedEvent(dateStr, userId) {
+        var events = calendar.getEvents();
+        for (var i = 0; i < events.length; i += 1) {
+            var ev = events[i];
+            var props = ev.extendedProps || {};
+            if (props.kind !== 'planned') continue;
+            if (Number(props.user_id) !== Number(userId)) continue;
+            if ((ev.startStr || '').slice(0, 10) !== dateStr) continue;
+            return ev;
+        }
+        return null;
+    }
+
+    function postPlannedShift(payload) {
+        return fetch('/shifts/api/planned', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (!data.ok) throw new Error(data.error || 'Ошибка сохранения');
+            return data;
+        });
+    }
+
+    function removePlannedShift(plannedId) {
+        return fetch('/shifts/api/planned/' + plannedId, { method: 'DELETE' })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Ошибка удаления');
+                return r;
+            });
+    }
+
+    function toggleFillDate(dateStr) {
+        if (fillMode.busy) return;
+        var sel = getFillSelection();
+        if (!sel.userId || !sel.pointId) {
+            setFillStatus('Выберите ПВЗ и сотрудника перед кликом по дате.', 'err');
+            return;
+        }
+
+        fillMode.busy = true;
+        var planned = findPlannedEvent(dateStr, sel.userId);
+        var actionPromise;
+
+        if (planned && Number(planned.extendedProps.point_id) === sel.pointId) {
+            actionPromise = removePlannedShift(planned.extendedProps.planned_id).then(function () {
+                return 'removed';
+            });
+        } else {
+            actionPromise = postPlannedShift({
+                shift_date: dateStr,
+                user_id: sel.userId,
+                point_id: sel.pointId,
+                notes: sel.notes,
+            }).then(function () {
+                return planned ? 'updated' : 'added';
+            });
+        }
+
+        actionPromise
+            .then(function (action) {
+                calendar.refetchEvents();
+                if (action === 'removed') {
+                    setFillStatus('Снята смена: ' + dateStr + ' (' + sel.userLabel + ')', 'ok');
+                } else if (action === 'updated') {
+                    setFillStatus('Обновлена смена: ' + dateStr + ' → ' + sel.pointLabel, 'ok');
+                } else {
+                    setFillStatus('Добавлена смена: ' + dateStr + ' → ' + sel.pointLabel, 'ok');
+                }
+            })
+            .catch(function (err) {
+                setFillStatus(err.message || 'Ошибка сохранения смены', 'err');
+            })
+            .finally(function () {
+                fillMode.busy = false;
+            });
+    }
+
     /* ── Delete planned shift ── */
     function deletePlanned(plannedId) {
         if (!confirm('Удалить запланированную смену?')) return;
-        fetch('/shifts/api/planned/' + plannedId, { method: 'DELETE' })
+        removePlannedShift(plannedId)
         .then(function () {
             closePopup();
             calendar.refetchEvents();
@@ -375,7 +573,12 @@
 
         /* Click on empty date → open book modal */
         dateClick: function (info) {
-            openBook(info.dateStr.slice(0, 10));
+            var dateStr = info.dateStr.slice(0, 10);
+            if (fillMode.active) {
+                toggleFillDate(dateStr);
+                return;
+            }
+            openBook(dateStr);
         },
 
         loading: function (isLoading) {

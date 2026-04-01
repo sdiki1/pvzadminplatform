@@ -1,44 +1,54 @@
 {% extends "base.html" %}
-{% block title %}Новое оспаривание - PVZ Admin{% endblock %}
+{% block title %}{% if item %}Редактировать оспаривание #{{ item.id }}{% else %}Новое оспаривание{% endif %} - PVZ Admin{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1>Новое оспаривание</h1>
-    <a href="/appeals" class="btn btn-outline-secondary btn-sm">Назад</a>
+    <h1>{% if item %}Редактировать оспаривание #{{ item.id }}{% else %}Новое оспаривание{% endif %}</h1>
+    <a href="{% if item %}/appeals/{{ item.id }}{% else %}/appeals{% endif %}" class="btn btn-outline-secondary btn-sm">Назад</a>
 </div>
 
 <div class="form-card">
-    <form method="post" action="/appeals/new">
+    <form method="post" action="{% if item %}/appeals/{{ item.id }}/edit{% else %}/appeals/new{% endif %}">
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">Точка <span class="text-danger">*</span></label>
                 <select class="form-select" name="point_id" required>
                     <option value="">Выберите</option>
                     {% for p in points %}
-                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    <option value="{{ p.id }}" {% if item and item.point_id == p.id %}selected{% endif %}>{{ p.name }}</option>
                     {% endfor %}
                 </select>
             </div>
             <div class="col-md-4">
                 <label class="form-label">Дата <span class="text-danger">*</span></label>
-                <input type="date" class="form-control" name="case_date" required>
+                <input type="date" class="form-control" name="case_date" required
+                       value="{{ item.case_date.strftime('%Y-%m-%d') if item and item.case_date else '' }}">
             </div>
             <div class="col-md-4">
                 <label class="form-label">Тип оспаривания</label>
                 <select class="form-select" name="appeal_type">
                     {% for code, label in appeal_types %}
-                    <option value="{{ code }}">{{ label }}</option>
+                    <option value="{{ code }}" {% if item and item.appeal_type == code %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-3"><label class="form-label">ШК</label><input type="text" class="form-control" name="barcode"></div>
-            <div class="col-md-3"><label class="form-label">Тикет</label><input type="text" class="form-control" name="ticket_number"></div>
-            <div class="col-md-3"><label class="form-label">Сумма</label><input type="text" class="form-control" name="amount"></div>
+            <div class="col-md-3">
+                <label class="form-label">ШК</label>
+                <input type="text" class="form-control" name="barcode" value="{{ item.barcode or '' if item else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Тикет</label>
+                <input type="text" class="form-control" name="ticket_number" value="{{ item.ticket_number or '' if item else '' }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Сумма</label>
+                <input type="text" class="form-control" name="amount" value="{{ '%.2f'|format(item.amount) if item and item.amount else '' }}">
+            </div>
             <div class="col-md-3">
                 <label class="form-label">Статус</label>
                 <select class="form-select" name="status">
                     {% for code, label in statuses %}
-                    <option value="{{ code }}">{{ label }}</option>
+                    <option value="{{ code }}" {% if item and item.status == code %}selected{% endif %}>{{ label }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -47,24 +57,47 @@
                 <select class="form-select" name="assigned_manager_employee_id">
                     <option value="">-</option>
                     {% for e in employees %}
-                    <option value="{{ e.id }}">{{ e.full_name }}</option>
+                    <option value="{{ e.id }}" {% if item and item.assigned_manager_employee_id == e.id %}selected{% endif %}>{{ e.full_name }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="col-md-4"><label class="form-label">Фамилия менеджера (как в таблице)</label><input type="text" class="form-control" name="assigned_manager_raw"></div>
-            <div class="col-md-4"><label class="form-label">Дедлайн</label><input type="date" class="form-control" name="deadline_date"></div>
+            <div class="col-md-4">
+                <label class="form-label">Фамилия менеджера (как в таблице)</label>
+                <input type="text" class="form-control" name="assigned_manager_raw" value="{{ item.assigned_manager_raw or '' if item else '' }}">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Дедлайн</label>
+                <input type="date" class="form-control" name="deadline_date"
+                       value="{{ item.deadline_date.strftime('%Y-%m-%d') if item and item.deadline_date else '' }}">
+            </div>
             <div class="col-md-4">
                 <label class="form-label">&nbsp;</label>
                 <div class="form-check mt-2">
-                    <input class="form-check-input" type="checkbox" name="charge_to_manager" id="charge_to_manager">
+                    <input class="form-check-input" type="checkbox" name="charge_to_manager" id="charge_to_manager"
+                           {% if item and item.charge_to_manager %}checked{% endif %}>
                     <label class="form-check-label" for="charge_to_manager">Списание с менеджера</label>
                 </div>
             </div>
-            <div class="col-md-6"><label class="form-label">Причина, по которой тикет не оспорен</label><textarea class="form-control" name="non_appeal_reason" rows="2"></textarea></div>
-            <div class="col-md-6"><label class="form-label">Списание с менеджера (комментарий)</label><textarea class="form-control" name="charge_comment" rows="2"></textarea></div>
-            <div class="col-md-6"><label class="form-label">ОС от Надежды</label><textarea class="form-control" name="feedback_from_nadezhda" rows="2"></textarea></div>
-            <div class="col-md-6"><label class="form-label">ОС от Анны</label><textarea class="form-control" name="feedback_from_anna" rows="2"></textarea></div>
-            <div class="col-md-12"><label class="form-label">Итоговый комментарий</label><textarea class="form-control" name="result_comment" rows="2"></textarea></div>
+            <div class="col-md-6">
+                <label class="form-label">Причина, по которой тикет не оспорен</label>
+                <textarea class="form-control" name="non_appeal_reason" rows="2">{{ item.non_appeal_reason or '' if item else '' }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Списание с менеджера (комментарий)</label>
+                <textarea class="form-control" name="charge_comment" rows="2">{{ item.charge_comment or '' if item else '' }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">ОС от Надежды</label>
+                <textarea class="form-control" name="feedback_from_nadezhda" rows="2">{{ item.feedback_from_nadezhda or '' if item else '' }}</textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">ОС от Анны</label>
+                <textarea class="form-control" name="feedback_from_anna" rows="2">{{ item.feedback_from_anna or '' if item else '' }}</textarea>
+            </div>
+            <div class="col-md-12">
+                <label class="form-label">Итоговый комментарий</label>
+                <textarea class="form-control" name="result_comment" rows="2">{{ item.result_comment or '' if item else '' }}</textarea>
+            </div>
         </div>
         <div class="mt-4">
             <button type="submit" class="btn btn-primary">Сохранить</button>

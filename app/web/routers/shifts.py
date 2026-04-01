@@ -177,6 +177,8 @@ async def shift_events(
             "textColor": "#ffffff",
             "extendedProps": {
                 "kind": "actual",
+                "user_id": s.user_id,
+                "point_id": s.point_id,
                 "state": state_val,
                 "duration_minutes": s.duration_minutes,
                 "point": point.name if point else None,
@@ -203,6 +205,8 @@ async def shift_events(
             "extendedProps": {
                 "kind": "planned",
                 "planned_id": p.id,
+                "user_id": p.user_id,
+                "point_id": p.point_id,
                 "point": point.name if point else None,
                 "employee": user.full_name if user else None,
                 "notes": p.notes or "",

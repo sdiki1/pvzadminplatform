@@ -225,6 +225,108 @@ async def appeal_detail(
         "status_labels": APPEAL_STATUS_LABELS})
 
 
+@router.get("/{appeal_id}/edit", response_class=HTMLResponse)
+async def edit_appeal_form(
+    appeal_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return RedirectResponse(url="/appeals", status_code=302)
+
+    points_result = await db.execute(select(Point).where(Point.is_active == True))
+    points = points_result.scalars().all()
+
+    employees_result = await db.execute(select(User).where(User.is_active == True))
+    employees = employees_result.scalars().all()
+
+    return templates.TemplateResponse(request, "appeals/form.html", {"current_user": current_user,
+        "active_page": "appeals",
+        "item": item,
+        "points": points,
+        "employees": employees,
+        "appeal_types": APPEAL_TYPES,
+        "statuses": APPEAL_STATUSES,
+        "appeal_type_labels": APPEAL_TYPE_LABELS,
+        "status_labels": APPEAL_STATUS_LABELS,
+        "error": None})
+
+
+@router.post("/{appeal_id}/edit")
+async def update_appeal(
+    appeal_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return RedirectResponse(url="/appeals", status_code=302)
+
+    form = await request.form()
+    case_date = parse_date(form.get("case_date")) or item.case_date
+    deadline_date = parse_date(form.get("deadline_date"))
+
+    amount = None
+    raw_amount = form.get("amount", "").strip()
+    if raw_amount:
+        try:
+            amount = float(raw_amount.replace("р", "").replace(" ", "").replace(",", "."))
+        except ValueError:
+            amount = item.amount
+    else:
+        amount = None
+
+    assigned_manager_employee_id = None
+    raw_manager_id = str(form.get("assigned_manager_employee_id", "")).strip()
+    if raw_manager_id.isdigit():
+        assigned_manager_employee_id = int(raw_manager_id)
+
+    assigned_manager_raw = form.get("assigned_manager_raw", "").strip() or None
+
+    item.case_date = case_date
+    item.point_id = int(form["point_id"])
+    item.appeal_type = form.get("appeal_type", "other")
+    item.barcode = form.get("barcode", "").strip() or None
+    item.ticket_number = form.get("ticket_number", "").strip() or None
+    item.amount = amount
+    item.status = form.get("status", item.status)
+    item.assigned_manager_employee_id = assigned_manager_employee_id
+    item.assigned_manager_raw = assigned_manager_raw
+    item.non_appeal_reason = form.get("non_appeal_reason", "").strip() or None
+    item.charge_to_manager = form.get("charge_to_manager") == "on"
+    item.charge_comment = form.get("charge_comment", "").strip() or None
+    item.feedback_from_nadezhda = form.get("feedback_from_nadezhda", "").strip() or None
+    item.feedback_from_anna = form.get("feedback_from_anna", "").strip() or None
+    item.deadline_date = deadline_date
+    item.result_comment = form.get("result_comment", "").strip() or None
+
+    await db.commit()
+    return RedirectResponse(url=f"/appeals/{appeal_id}", status_code=302)
+
+
+@router.post("/{appeal_id}/delete")
+async def delete_appeal(
+    appeal_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    roles = current_user.roles if hasattr(current_user, "roles") else []
+    if "superadmin" not in roles:
+        return RedirectResponse(url=f"/appeals/{appeal_id}", status_code=302)
+
+    result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
+    item = result.scalar_one_or_none()
+    if item:
+        await db.delete(item)
+        await db.commit()
+    return RedirectResponse(url="/appeals", status_code=302)
+
+
 @router.post("/{appeal_id}/feedback")
 async def add_feedback(
     appeal_id: int,

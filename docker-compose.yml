@@ -27,7 +27,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://pvz:pvz@db:5432/pvz
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://pvz:pvz@db:5432/pvz}
     volumes:
       - ./data:/app/data
 

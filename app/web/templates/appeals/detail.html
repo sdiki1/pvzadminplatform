@@ -4,7 +4,20 @@
 {% block content %}
 <div class="page-header">
     <h1>Оспаривание #{{ item.id }}</h1>
-    <a href="/appeals" class="btn btn-outline-secondary btn-sm">Назад</a>
+    <div class="d-flex gap-2">
+        <a href="/appeals/{{ item.id }}/edit" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-pencil me-1"></i>Редактировать
+        </a>
+        {% if 'superadmin' in current_user.roles %}
+        <form method="post" action="/appeals/{{ item.id }}/delete"
+              onsubmit="return confirm('Удалить оспаривание #{{ item.id }}? Это действие необратимо.')">
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-trash me-1"></i>Удалить
+            </button>
+        </form>
+        {% endif %}
+        <a href="/appeals" class="btn btn-outline-secondary btn-sm">Назад</a>
+    </div>
 </div>
 
 <div class="row g-3">
