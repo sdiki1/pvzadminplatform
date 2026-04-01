@@ -111,7 +111,7 @@
             {% for cell in grid %}
             <th {% if cell.date.strftime('%Y-%m-%d') == today_str %}class="day-today"{% endif %}>
                 {{ cell.day }}<br>
-                <span style="font-weight:400;font-size:10px;opacity:.7">{{ cell.date.strftime('%a') }}</span>
+                <span style="font-weight:400;font-size:10px;opacity:.7">{{ day_names[cell.date.weekday()] }}</span>
             </th>
             {% endfor %}
             <th style="min-width:70px;background:#1e293b">Итого</th>
@@ -176,7 +176,7 @@
 </div>
 
 <div class="text-muted small mt-2">
-    <i class="bi bi-info-circle me-1"></i>Кликните на ячейку для редактирования — значение сохраняется автоматически при выходе из поля.
+    <i class="bi bi-info-circle me-1"></i>Кликните на ячейку для редактирования. Навигация: <kbd>→</kbd><kbd>←</kbd> по дням, <kbd>↑</kbd><kbd>↓</kbd> между строками, <kbd>Enter</kbd> — следующий день, <kbd>Esc</kbd> — выход. Значение сохраняется автоматически.
 </div>
 {% endblock %}
 
@@ -243,14 +243,46 @@ document.querySelectorAll('.cell-input').forEach(function(input) {
         });
     });
 
-    // Enter → move to next input in same row
     input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
+        var FIELDS = ['items_given', 'clients_count', 'acceptance_amount'];
+        var field  = this.dataset.field;
+        var date   = this.dataset.date;
+
+        if (e.key === 'ArrowRight' || e.key === 'Enter') {
             e.preventDefault();
-            var all = Array.from(document.querySelectorAll('.cell-input[data-field="' + this.dataset.field + '"]'));
-            var idx = all.indexOf(this);
-            if (idx < all.length - 1) all[idx + 1].focus();
-            else this.blur();
+            // next date, same field
+            var row = Array.from(document.querySelectorAll('.cell-input[data-field="' + field + '"]'));
+            var idx = row.indexOf(this);
+            var target = row[idx + 1];
+            if (target) target.focus(); else this.blur();
+
+        } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            var row = Array.from(document.querySelectorAll('.cell-input[data-field="' + field + '"]'));
+            var idx = row.indexOf(this);
+            var target = row[idx - 1];
+            if (target) target.focus();
+
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            // next field, same date
+            var fi = FIELDS.indexOf(field);
+            if (fi < FIELDS.length - 1) {
+                var next = document.querySelector('.cell-input[data-field="' + FIELDS[fi + 1] + '"][data-date="' + date + '"]');
+                if (next) next.focus();
+            }
+
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            // prev field, same date
+            var fi = FIELDS.indexOf(field);
+            if (fi > 0) {
+                var prev = document.querySelector('.cell-input[data-field="' + FIELDS[fi - 1] + '"][data-date="' + date + '"]');
+                if (prev) prev.focus();
+            }
+
+        } else if (e.key === 'Escape') {
+            this.blur();
         }
     });
 });

@@ -80,6 +80,8 @@ async def reception_index(
 
     month_names = ["Январь","Февраль","Март","Апрель","Май","Июнь",
                    "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
+    # 0=Пн … 6=Вс
+    day_names = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
 
     return templates.TemplateResponse(request, "reception/index.html", {
         "current_user": current_user,
@@ -95,6 +97,7 @@ async def reception_index(
         "next_year": next_year,
         "next_month": next_month,
         "today_str": date.today().strftime('%Y-%m-%d'),
+        "day_names": day_names,
     })
 
 
