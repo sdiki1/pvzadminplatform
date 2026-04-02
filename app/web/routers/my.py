@@ -113,6 +113,14 @@ async def my_portal(
 
     points_map = {p.id: p for p in (await db.execute(select(Point))).scalars().all()}
 
+    # Planned shifts for today (employee can only open a shift if one is planned)
+    today_planned = (await db.execute(
+        select(PlannedShift).where(
+            PlannedShift.user_id == current_user.user_id,
+            PlannedShift.shift_date == today,
+        )
+    )).scalars().all()
+
     return templates.TemplateResponse(request, "my/index.html", {
         "current_user": current_user,
         "active_page": "my",
@@ -121,6 +129,7 @@ async def my_portal(
         "today_shifts": today_shifts,
         "today_closed": today_closed,
         "upcoming_planned": upcoming_planned,
+        "today_planned": today_planned,
         "points": points,
         "points_map": points_map,
         "today": today,
@@ -144,6 +153,19 @@ async def open_shift(
     form = await request.form()
     point_id = int(form.get("point_id", 0))
     if not point_id:
+        return RedirectResponse(url="/my", status_code=302)
+
+    today = date.today()
+
+    # Must have a planned shift for today at this point
+    planned = (await db.execute(
+        select(PlannedShift).where(
+            PlannedShift.user_id == current_user.user_id,
+            PlannedShift.shift_date == today,
+            PlannedShift.point_id == point_id,
+        )
+    )).scalar_one_or_none()
+    if not planned:
         return RedirectResponse(url="/my", status_code=302)
 
     now = datetime.now(TZ).replace(tzinfo=None)

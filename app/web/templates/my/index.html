@@ -51,14 +51,14 @@
                     </button>
                 </form>
             </div>
-            {% else %}
+            {% elif today_planned %}
             <form method="post" action="/my/shift/open" class="d-flex gap-2 align-items-end flex-wrap mb-3">
                 <div>
                     <label class="form-label mb-1 small fw-semibold">Точка</label>
                     <select class="form-select form-select-sm" name="point_id" required style="min-width:200px">
                         <option value="">Выберите точку</option>
-                        {% for p in points %}
-                        <option value="{{ p.id }}">{{ p.name }}</option>
+                        {% for ps in today_planned %}
+                        <option value="{{ ps.point_id }}">{{ points_map.get(ps.point_id).name if points_map.get(ps.point_id) else ps.point_id }}{% if ps.start_time and ps.end_time %} ({{ ps.start_time.strftime('%H:%M') }}–{{ ps.end_time.strftime('%H:%M') }}){% endif %}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -66,6 +66,14 @@
                     <i class="bi bi-play-circle me-1"></i>Открыть смену
                 </button>
             </form>
+            {% else %}
+            <div class="alert alert-secondary d-flex align-items-center gap-2 mb-3" style="border-radius:12px">
+                <i class="bi bi-calendar-x text-secondary" style="font-size:20px"></i>
+                <div>
+                    <div class="fw-semibold">На сегодня смен не запланировано</div>
+                    <div class="small text-muted">Добавьте плановую смену в расписании ниже</div>
+                </div>
+            </div>
             {% endif %}
 
             {% if today_closed %}

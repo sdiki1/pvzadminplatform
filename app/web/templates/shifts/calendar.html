@@ -289,6 +289,56 @@
     <div id="popupActions"></div>
 </div>
 
+{# ── Edit actual shift modal ── #}
+<div id="editShiftBackdrop" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.3);backdrop-filter:blur(2px)"></div>
+<div id="editShiftModal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#fff;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.22);padding:1.5rem;min-width:340px;max-width:440px;width:90%">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-pencil me-2 text-primary"></i>Редактировать смену</h6>
+        <button type="button" class="btn-close" id="editShiftClose"></button>
+    </div>
+    <div class="mb-2 small text-muted" id="editShiftMeta"></div>
+    <div class="row g-3">
+        <div class="col-12">
+            <label class="form-label small fw-semibold">Точка</label>
+            <select id="editPoint" class="form-select form-select-sm">
+                {% for p in points %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-12">
+            <label class="form-label small fw-semibold">Дата смены</label>
+            <input type="date" id="editDate" class="form-control form-control-sm">
+        </div>
+        <div class="col-6">
+            <label class="form-label small fw-semibold">Начало</label>
+            <input type="time" id="editOpenedAt" class="form-control form-control-sm">
+        </div>
+        <div class="col-6">
+            <label class="form-label small fw-semibold">Конец <span class="text-muted fw-normal">(если закрыта)</span></label>
+            <input type="time" id="editClosedAt" class="form-control form-control-sm">
+        </div>
+        <div class="col-12">
+            <label class="form-label small fw-semibold">Статус</label>
+            <select id="editState" class="form-select form-select-sm">
+                <option value="open">Открыта</option>
+                <option value="closed">Закрыта</option>
+            </select>
+        </div>
+        <div class="col-12">
+            <label class="form-label small fw-semibold">Заметка</label>
+            <input type="text" id="editNotes" class="form-control form-control-sm" placeholder="необязательно">
+        </div>
+    </div>
+    <div class="d-flex gap-2 justify-content-end mt-3">
+        <button class="btn btn-outline-secondary btn-sm" id="editShiftCancel">Отмена</button>
+        <button class="btn btn-primary btn-sm" id="editShiftSave">
+            <i class="bi bi-check2 me-1"></i>Сохранить
+        </button>
+    </div>
+    <div id="editShiftError" class="text-danger small mt-2" style="display:none"></div>
+</div>
+
 {# ── Book shift modal ── #}
 <div id="bookModalBackdrop"></div>
 <div id="bookModal">
@@ -701,6 +751,78 @@
             });
     }
 
+    /* ── Edit actual shift modal ── */
+    var editModal    = document.getElementById('editShiftModal');
+    var editBackdrop = document.getElementById('editShiftBackdrop');
+    var editShiftId  = null;
+
+    function closeEditShift() {
+        editModal.style.display    = 'none';
+        editBackdrop.style.display = 'none';
+        document.getElementById('editShiftError').style.display = 'none';
+        editShiftId = null;
+    }
+    document.getElementById('editShiftClose').addEventListener('click', closeEditShift);
+    document.getElementById('editShiftCancel').addEventListener('click', closeEditShift);
+    editBackdrop.addEventListener('click', closeEditShift);
+
+    function openEditShift(shiftId, props, dateStr) {
+        editShiftId = shiftId;
+        // meta line
+        var meta = (props.employee || '—') + ' · ' + dateStr;
+        document.getElementById('editShiftMeta').textContent = meta;
+        // fields
+        document.getElementById('editPoint').value    = props.point_id || '';
+        document.getElementById('editDate').value     = dateStr;
+        document.getElementById('editOpenedAt').value = props.opened_at || '';
+        document.getElementById('editClosedAt').value = props.closed_at || '';
+        document.getElementById('editState').value    = props.state || 'open';
+        document.getElementById('editNotes').value    = props.notes || '';
+        document.getElementById('editShiftError').style.display = 'none';
+        // close the detail popup first
+        closePopup();
+        editBackdrop.style.display = 'block';
+        editModal.style.display    = 'block';
+    }
+
+    document.getElementById('editShiftSave').addEventListener('click', function () {
+        if (!editShiftId) return;
+        var errEl = document.getElementById('editShiftError');
+        var payload = {
+            point_id:  parseInt(document.getElementById('editPoint').value, 10),
+            shift_date: document.getElementById('editDate').value,
+            opened_at: document.getElementById('editOpenedAt').value,
+            closed_at: document.getElementById('editClosedAt').value,
+            state:     document.getElementById('editState').value,
+            notes:     document.getElementById('editNotes').value.trim(),
+        };
+        if (!payload.point_id || !payload.shift_date) {
+            errEl.textContent = 'Заполните точку и дату';
+            errEl.style.display = 'block';
+            return;
+        }
+        errEl.style.display = 'none';
+        fetch('/shifts/api/shift/' + editShiftId + '/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.ok) {
+                closeEditShift();
+                calendar.refetchEvents();
+            } else {
+                errEl.textContent = data.error === 'forbidden' ? 'Недостаточно прав' : (data.error || 'Ошибка');
+                errEl.style.display = 'block';
+            }
+        })
+        .catch(function () {
+            errEl.textContent = 'Сетевая ошибка';
+            errEl.style.display = 'block';
+        });
+    });
+
     /* ── Delete planned shift ── */
     function deletePlanned(plannedId) {
         if (!confirm('Удалить запланированную смену?')) return;
@@ -839,7 +961,12 @@
                 document.getElementById('popupDuration').textContent = dur
                     ? (Math.floor(dur / 60) + ' ч ' + (dur % 60) + ' мин')
                     : '—';
-                actionsEl.innerHTML = '';
+                var shiftId = p.shift_id;
+                actionsEl.innerHTML = '<button class="btn btn-sm btn-outline-primary w-100" id="btnEditShift">'
+                    + '<i class="bi bi-pencil me-1"></i>Редактировать смену</button>';
+                document.getElementById('btnEditShift').addEventListener('click', function () {
+                    openEditShift(shiftId, p, niceDateStr);
+                });
             }
 
             popupBackdrop.style.display = 'block';

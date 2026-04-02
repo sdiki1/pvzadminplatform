@@ -54,8 +54,8 @@ async def list_appeals(
     query = select(Appeal)
     parsed_date_from = parse_date(date_from) if date_from else None
 
-    # manager: only own appeals (where they are the assigned manager)
-    if is_restricted_manager(current_user) and current_user.user_id:
+    # manager without disputes role: only own appeals (where they are the assigned manager)
+    if is_restricted_manager(current_user) and "disputes" not in set(current_user.roles) and current_user.user_id:
         query = query.where(Appeal.assigned_manager_employee_id == current_user.user_id)
     parsed_date_to = parse_date(date_to) if date_to else None
 

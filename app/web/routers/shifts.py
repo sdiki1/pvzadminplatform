@@ -333,10 +333,14 @@ async def shift_events(
             "textColor": "#ffffff",
             "extendedProps": {
                 "kind": "actual",
+                "shift_id": s.id,
                 "user_id": s.user_id,
                 "point_id": s.point_id,
                 "state": state_val,
                 "duration_minutes": s.duration_minutes,
+                "opened_at": s.opened_at.strftime("%H:%M") if s.opened_at else None,
+                "closed_at": s.closed_at.strftime("%H:%M") if s.closed_at else None,
+                "notes": s.notes or "",
                 "point": point.name if point else None,
                 "employee": user.full_name if user else None,
                 "opacity_style": opacity_style,
@@ -653,3 +657,112 @@ async def delete_planned_shift_form(
     await db.delete(planned)
     await db.commit()
     return RedirectResponse(url="/shifts?notice=planned_deleted", status_code=302)
+
+
+@router.get("/api/shift/{shift_id}")
+async def get_shift_api(
+    shift_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    shift = (await db.execute(select(Shift).where(Shift.id == shift_id))).scalar_one_or_none()
+    if not shift:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    points_map = {p.id: p for p in (await db.execute(select(Point))).scalars().all()}
+    users_map = {u.id: u for u in (await db.execute(select(User))).scalars().all()}
+    point = points_map.get(shift.point_id)
+    user = users_map.get(shift.user_id)
+
+    state_val = shift.state.value if hasattr(shift.state, "value") else str(shift.state)
+
+    return JSONResponse({
+        "id": shift.id,
+        "user_id": shift.user_id,
+        "point_id": shift.point_id,
+        "shift_date": shift.shift_date.isoformat(),
+        "state": state_val,
+        "opened_at": shift.opened_at.strftime("%H:%M") if shift.opened_at else "",
+        "opened_at_full": shift.opened_at.isoformat() if shift.opened_at else "",
+        "closed_at": shift.closed_at.strftime("%H:%M") if shift.closed_at else "",
+        "closed_at_full": shift.closed_at.isoformat() if shift.closed_at else "",
+        "duration_minutes": shift.duration_minutes,
+        "notes": shift.notes or "",
+        "point_name": point.name if point else "",
+        "employee_name": user.full_name if user else "",
+    })
+
+
+@router.post("/api/shift/{shift_id}/edit")
+async def edit_shift_api(
+    shift_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    if not _can_manage_all_schedule(current_user):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    shift = (await db.execute(select(Shift).where(Shift.id == shift_id))).scalar_one_or_none()
+    if not shift:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    data = await request.json()
+
+    # point
+    new_point_id = _parse_int(data.get("point_id"), 0)
+    if new_point_id:
+        shift.point_id = new_point_id
+
+    # date
+    try:
+        new_date = date.fromisoformat(str(data.get("shift_date", ""))[:10])
+        shift.shift_date = new_date
+    except (ValueError, TypeError):
+        pass
+
+    # open time (HH:MM — merge into existing date)
+    open_hhmm = str(data.get("opened_at", "")).strip()
+    if open_hhmm and ":" in open_hhmm:
+        try:
+            h, m = map(int, open_hhmm.split(":"))
+            shift.opened_at = shift.opened_at.replace(hour=h, minute=m, second=0, microsecond=0)
+        except (ValueError, AttributeError):
+            pass
+
+    # close time
+    close_hhmm = str(data.get("closed_at", "")).strip()
+    from datetime import datetime as dt
+    if close_hhmm and ":" in close_hhmm:
+        try:
+            h, m = map(int, close_hhmm.split(":"))
+            if shift.closed_at:
+                shift.closed_at = shift.closed_at.replace(hour=h, minute=m, second=0, microsecond=0)
+            else:
+                # create closed_at on same date as opened_at
+                shift.closed_at = shift.opened_at.replace(hour=h, minute=m, second=0, microsecond=0)
+        except (ValueError, AttributeError):
+            pass
+    elif close_hhmm == "":
+        shift.closed_at = None
+
+    # state
+    new_state = str(data.get("state", "")).strip()
+    if new_state in ("open", "closed"):
+        from app.db.models import ShiftState
+        shift.state = ShiftState.OPEN if new_state == "open" else ShiftState.CLOSED
+
+    # recalc duration if both timestamps present
+    if shift.opened_at and shift.closed_at:
+        diff = (shift.closed_at - shift.opened_at).total_seconds()
+        shift.duration_minutes = max(0, int(diff / 60))
+    elif new_state == "open":
+        shift.closed_at = None
+        shift.duration_minutes = None
+
+    # notes
+    if "notes" in data:
+        shift.notes = str(data["notes"]).strip() or None
+
+    await db.commit()
+    return JSONResponse({"ok": True})
