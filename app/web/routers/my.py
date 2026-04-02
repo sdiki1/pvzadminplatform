@@ -46,6 +46,21 @@ def _parse_time_range(start_raw, end_raw) -> tuple[time | None, time | None, boo
     return start_time, end_time, True
 
 
+async def _get_latest_open_shift(db: AsyncSession, user_id: int | None) -> Shift | None:
+    if not user_id:
+        return None
+    result = await db.execute(
+        select(Shift)
+        .where(
+            Shift.user_id == user_id,
+            Shift.state == ShiftState.OPEN,
+        )
+        .order_by(Shift.opened_at.desc(), Shift.id.desc())
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
 @router.get("", response_class=HTMLResponse)
 async def my_portal(
     request: Request,
@@ -59,14 +74,9 @@ async def my_portal(
 
     employee = (await db.execute(select(User).where(User.id == current_user.user_id))).scalar_one_or_none()
 
-    # Today's open shift
+    # Current open shift (take latest if historical data has multiple OPEN rows)
     today = date.today()
-    open_shift = (await db.execute(
-        select(Shift).where(
-            Shift.user_id == current_user.user_id,
-            Shift.state == ShiftState.OPEN,
-        )
-    )).scalar_one_or_none()
+    open_shift = await _get_latest_open_shift(db, current_user.user_id)
 
     # Today's shifts
     today_shifts = (await db.execute(
@@ -127,12 +137,7 @@ async def open_shift(
         return RedirectResponse(url="/my", status_code=302)
 
     # Check no open shift already
-    open_shift = (await db.execute(
-        select(Shift).where(
-            Shift.user_id == current_user.user_id,
-            Shift.state == ShiftState.OPEN,
-        )
-    )).scalar_one_or_none()
+    open_shift = await _get_latest_open_shift(db, current_user.user_id)
     if open_shift:
         return RedirectResponse(url="/my", status_code=302)
 
@@ -169,12 +174,7 @@ async def close_shift(
     if not current_user.user_id:
         return RedirectResponse(url="/my", status_code=302)
 
-    open_shift = (await db.execute(
-        select(Shift).where(
-            Shift.user_id == current_user.user_id,
-            Shift.state == ShiftState.OPEN,
-        )
-    )).scalar_one_or_none()
+    open_shift = await _get_latest_open_shift(db, current_user.user_id)
     if not open_shift:
         return RedirectResponse(url="/my", status_code=302)
 
