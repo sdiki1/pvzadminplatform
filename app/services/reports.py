@@ -34,13 +34,19 @@ class ReportService:
                 "Смены",
                 "Часы",
                 "База",
-                "Мотивация",
+                "Скорость приемки",
+                "Рейтинг",
                 "Бонус выдача",
                 "Резерв",
                 "Резервный выход",
-                "Удержания спорные",
+                "Зависшие",
+                "Подмена товара",
+                "Брак товара",
+                "Удержания всего",
                 "Бонус менеджера",
                 "Корректировки",
+                "Подытог",
+                "Долг/Переплата ДС",
                 "Итого",
             ]
         )
@@ -53,12 +59,18 @@ class ReportService:
                     float(row.hours_total),
                     float(row.base_amount_rub),
                     float(row.motivation_amount_rub),
+                    float(row.rating_bonus_rub),
                     float(row.issued_bonus_rub),
                     float(row.reserve_bonus_rub),
                     float(row.substitution_bonus_rub),
+                    float(row.stuck_deduction_rub),
+                    float(row.substitution_deduction_rub),
+                    float(row.defect_deduction_rub),
                     float(row.dispute_deduction_rub),
                     float(row.manager_bonus_rub),
                     float(row.adjustments_rub),
+                    float(row.subtotal_amount_rub),
+                    float(row.debt_adjustment_rub),
                     float(row.total_amount_rub),
                 ]
             )
@@ -88,13 +100,19 @@ class ReportService:
             ws.append(["Период начислений", "", "", f"{period_start:%d.%m.%Y} - {period_end:%d.%m.%Y}"])
             ws.append([])
             ws.append(["Оклад", "", row.shifts_count, float(row.base_amount_rub)])
-            ws.append(["Мотивирующие начисления", "", "", float(row.motivation_amount_rub)])
+            ws.append(["Премия за скорость приёмки", "", "", float(row.motivation_amount_rub)])
+            ws.append(["Премия за рейтинг, оценки клиентов", "", "", float(row.rating_bonus_rub)])
             ws.append(["Премия за выдачу", "", "", float(row.issued_bonus_rub)])
             ws.append(["Резервные дежурства", "", "", float(row.reserve_bonus_rub)])
             ws.append(["Резервные выходы", "", "", float(row.substitution_bonus_rub)])
+            ws.append(["Зависшие товары", "", "", float(row.stuck_deduction_rub)])
+            ws.append(["Подмена товара", "", "", float(row.substitution_deduction_rub)])
+            ws.append(["Брак товара", "", "", float(row.defect_deduction_rub)])
             ws.append(["Удержания по товарам (не оспорено)", "", "", float(row.dispute_deduction_rub)])
             ws.append(["Доп. выплаты менеджера", "", "", float(row.manager_bonus_rub)])
             ws.append(["Премия / удержание руководства", "", "", float(row.adjustments_rub)])
+            ws.append(["Подытог (без ДС)", "", "", float(row.subtotal_amount_rub)])
+            ws.append(["Долг / Переплата ДС", "", "", float(row.debt_adjustment_rub)])
             ws.append(["Итого", "", "", float(row.total_amount_rub)])
 
         path = self.export_dir / f"payroll_sheets_{period_start}_{period_end}.xlsx"

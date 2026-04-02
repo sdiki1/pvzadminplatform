@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,18 +35,31 @@ ZERO = Decimal("0")
 
 
 @dataclass
+class PayrollUserInput:
+    issued_bonus_rub: Decimal | None = None
+    rating_bonus_rub: Decimal = ZERO
+    debt_adjustment_rub: Decimal = ZERO
+
+
+@dataclass
 class EmployeePayrollBreakdown:
     user: User
     shifts_count: int
     hours_total: Decimal
     base_amount_rub: Decimal
     motivation_amount_rub: Decimal
+    rating_bonus_rub: Decimal
     issued_bonus_rub: Decimal
     reserve_bonus_rub: Decimal
     substitution_bonus_rub: Decimal
+    stuck_deduction_rub: Decimal
+    substitution_deduction_rub: Decimal
+    defect_deduction_rub: Decimal
     dispute_deduction_rub: Decimal
     manager_bonus_rub: Decimal
     adjustments_rub: Decimal
+    subtotal_amount_rub: Decimal
+    debt_adjustment_rub: Decimal
     total_amount_rub: Decimal
     issued_items_total: Decimal
     details: dict
@@ -63,13 +77,65 @@ class PayrollService:
         self.adjustment_repo = ManualAdjustmentRepo(session)
         self.payroll_repo = PayrollRepo(session)
 
+    async def preview_payroll(
+        self,
+        period_start: date,
+        period_end: date,
+        payout_day: int,
+        user_inputs: Mapping[int | str, PayrollUserInput | Mapping[str, object]] | None = None,
+    ) -> list[EmployeePayrollBreakdown]:
+        return await self._calculate_rows(period_start, period_end, payout_day, user_inputs)
+
     async def run_payroll(
         self,
         period_start: date,
         period_end: date,
         payout_day: int,
         generated_by: int | None,
+        user_inputs: Mapping[int | str, PayrollUserInput | Mapping[str, object]] | None = None,
     ) -> tuple[int, list[EmployeePayrollBreakdown]]:
+        results = await self._calculate_rows(period_start, period_end, payout_day, user_inputs)
+
+        run = await self.payroll_repo.create_or_replace_run(period_start, period_end, payout_day, generated_by)
+
+        db_items: list[PayrollItem] = []
+        for result in results:
+            db_items.append(
+                PayrollItem(
+                    run_id=run.id,
+                    user_id=result.user.id,
+                    shifts_count=result.shifts_count,
+                    hours_total=result.hours_total,
+                    base_amount_rub=result.base_amount_rub,
+                    motivation_amount_rub=result.motivation_amount_rub,
+                    rating_bonus_rub=result.rating_bonus_rub,
+                    issued_bonus_rub=result.issued_bonus_rub,
+                    reserve_bonus_rub=result.reserve_bonus_rub,
+                    substitution_bonus_rub=result.substitution_bonus_rub,
+                    stuck_deduction_rub=result.stuck_deduction_rub,
+                    substitution_deduction_rub=result.substitution_deduction_rub,
+                    defect_deduction_rub=result.defect_deduction_rub,
+                    dispute_deduction_rub=result.dispute_deduction_rub,
+                    manager_bonus_rub=result.manager_bonus_rub,
+                    adjustments_rub=result.adjustments_rub,
+                    debt_adjustment_rub=result.debt_adjustment_rub,
+                    total_amount_rub=result.total_amount_rub,
+                    details_json=json.dumps(result.details, ensure_ascii=False),
+                )
+            )
+
+        await self.payroll_repo.add_items(db_items)
+        return run.id, results
+
+    async def _calculate_rows(
+        self,
+        period_start: date,
+        period_end: date,
+        payout_day: int,
+        user_inputs: Mapping[int | str, PayrollUserInput | Mapping[str, object]] | None,
+    ) -> list[EmployeePayrollBreakdown]:
+        normalized_user_inputs = self._normalize_user_inputs(user_inputs)
+
         users = await self.user_repo.list_active_employees()
         users_map = {u.id: u for u in users}
 
@@ -121,7 +187,7 @@ class PayrollService:
             if (shift.user_id, shift.shift_date, shift.point_id) in substitution_plan_keys:
                 substitution_count_by_user[shift.user_id] += 1
 
-        user_id_by_last_name = {}
+        user_id_by_last_name: dict[str, int] = {}
         for user in users:
             if user.last_name:
                 user_id_by_last_name[normalize_text(user.last_name)] = user.id
@@ -140,15 +206,53 @@ class PayrollService:
                 tickets_by_user=tickets_by_user,
             )
 
-        dispute_by_user = defaultdict(lambda: ZERO)
-        for rec in dispute_records:
-            status = normalize_text(rec.status or "")
-            if "не оспор" not in status:
-                continue
-            user_id = rec.user_id or self._match_user_id_from_name(rec.manager_name, user_id_by_last_name)
+        stuck_deduction_by_user = defaultdict(lambda: ZERO)
+        substitution_deduction_by_user = defaultdict(lambda: ZERO)
+        defect_deduction_by_user = defaultdict(lambda: ZERO)
+
+        appeals_result = await self.session.execute(
+            select(Appeal).where(
+                Appeal.case_date >= period_start,
+                Appeal.case_date <= period_end,
+            )
+        )
+        appeals = appeals_result.scalars().all()
+
+        appeal_deductions_found = False
+        for appeal in appeals:
+            user_id = appeal.assigned_manager_employee_id or self._match_user_id_from_name(
+                appeal.assigned_manager_raw, user_id_by_last_name
+            )
             if not user_id:
                 continue
-            dispute_by_user[user_id] += Decimal(rec.disputed_amount_rub or 0)
+            if not self._is_appeal_deduction(appeal):
+                continue
+            amount = abs(Decimal(appeal.amount or 0))
+            if amount <= 0:
+                continue
+            appeal_deductions_found = True
+
+            appeal_type = normalize_text(appeal.appeal_type or "")
+            if "stuck" in appeal_type or "завис" in appeal_type:
+                stuck_deduction_by_user[user_id] += amount
+            elif "substitution" in appeal_type or "подмен" in appeal_type:
+                substitution_deduction_by_user[user_id] += amount
+            elif "defect" in appeal_type or "брак" in appeal_type:
+                defect_deduction_by_user[user_id] += amount
+            else:
+                defect_deduction_by_user[user_id] += amount
+
+        # Backward compatibility: if appeal deductions are absent,
+        # use historical dispute motivation records.
+        if not appeal_deductions_found:
+            for rec in dispute_records:
+                status = normalize_text(rec.status or "")
+                if "не оспор" not in status and "not_appealed" not in status:
+                    continue
+                user_id = rec.user_id or self._match_user_id_from_name(rec.manager_name, user_id_by_last_name)
+                if not user_id:
+                    continue
+                defect_deduction_by_user[user_id] += abs(Decimal(rec.disputed_amount_rub or 0))
 
         adjustments_by_user = defaultdict(lambda: ZERO)
         for adj in adjustments:
@@ -176,23 +280,43 @@ class PayrollService:
         for user_id, substitution_count in substitution_count_by_user.items():
             substitution_bonus_by_user[user_id] = Decimal(substitution_count * self.settings.substitution_bonus_rub)
 
-        run = await self.payroll_repo.create_or_replace_run(period_start, period_end, payout_day, generated_by)
-
         results: list[EmployeePayrollBreakdown] = []
-        db_items: list[PayrollItem] = []
 
         for user in users:
+            user_input = normalized_user_inputs.get(user.id)
+
             base = base_by_user[user.id]
             motivation = motivation_by_user[user.id]
-            issued_bonus = issued_bonus_by_user[user.id]
+            auto_issued_bonus = issued_bonus_by_user[user.id]
+            issued_bonus = user_input.issued_bonus_rub if user_input and user_input.issued_bonus_rub is not None else auto_issued_bonus
+            rating_bonus = user_input.rating_bonus_rub if user_input else ZERO
+
             reserve_bonus = reserve_bonus_by_user[user.id]
             substitution_bonus = substitution_bonus_by_user[user.id]
-            dispute = dispute_by_user[user.id]
+
+            stuck_deduction = stuck_deduction_by_user[user.id]
+            substitution_deduction = substitution_deduction_by_user[user.id]
+            defect_deduction = defect_deduction_by_user[user.id]
+            dispute = stuck_deduction + substitution_deduction + defect_deduction
+
             manager_bonus = manager_bonus_by_user[user.id]
             adjustment = adjustments_by_user[user.id]
+            debt_adjustment = user_input.debt_adjustment_rub if user_input else ZERO
 
-            total = base + motivation + issued_bonus + reserve_bonus + substitution_bonus - dispute + manager_bonus + adjustment
-            total = self._money_round(total)
+            subtotal = (
+                base
+                + motivation
+                + rating_bonus
+                + issued_bonus
+                + reserve_bonus
+                + substitution_bonus
+                - dispute
+                + manager_bonus
+                + adjustment
+            )
+            subtotal = self._money_round(subtotal)
+
+            total = self._money_round(subtotal + debt_adjustment)
 
             details = {
                 "period_start": period_start.isoformat(),
@@ -200,10 +324,22 @@ class PayrollService:
                 "shifts_count": shifts_count_by_user[user.id],
                 "hours_total": str(self._money_round(shift_hours_by_user[user.id])),
                 "issued_items": str(self._money_round(issued_count_by_user[user.id])),
+                "issued_bonus_auto_rub": str(self._money_round(auto_issued_bonus)),
+                "issued_bonus_rub": str(self._money_round(issued_bonus)),
+                "rating_bonus_rub": str(self._money_round(rating_bonus)),
                 "reserve_count": reserve_count_by_user[user.id],
                 "reserve_bonus_rub": str(self._money_round(reserve_bonus)),
                 "substitution_count": substitution_count_by_user[user.id],
                 "substitution_bonus_rub": str(self._money_round(substitution_bonus)),
+                "stuck_deduction_rub": str(self._money_round(stuck_deduction)),
+                "substitution_deduction_rub": str(self._money_round(substitution_deduction)),
+                "defect_deduction_rub": str(self._money_round(defect_deduction)),
+                "dispute_deduction_rub": str(self._money_round(dispute)),
+                "manager_bonus_rub": str(self._money_round(manager_bonus)),
+                "adjustments_rub": str(self._money_round(adjustment)),
+                "subtotal_amount_rub": str(self._money_round(subtotal)),
+                "debt_adjustment_rub": str(self._money_round(debt_adjustment)),
+                "total_amount_rub": str(self._money_round(total)),
             }
 
             result = EmployeePayrollBreakdown(
@@ -212,39 +348,25 @@ class PayrollService:
                 hours_total=self._money_round(shift_hours_by_user[user.id]),
                 base_amount_rub=self._money_round(base),
                 motivation_amount_rub=self._money_round(motivation),
+                rating_bonus_rub=self._money_round(rating_bonus),
                 issued_bonus_rub=self._money_round(issued_bonus),
                 reserve_bonus_rub=self._money_round(reserve_bonus),
                 substitution_bonus_rub=self._money_round(substitution_bonus),
+                stuck_deduction_rub=self._money_round(stuck_deduction),
+                substitution_deduction_rub=self._money_round(substitution_deduction),
+                defect_deduction_rub=self._money_round(defect_deduction),
                 dispute_deduction_rub=self._money_round(dispute),
                 manager_bonus_rub=self._money_round(manager_bonus),
                 adjustments_rub=self._money_round(adjustment),
+                subtotal_amount_rub=self._money_round(subtotal),
+                debt_adjustment_rub=self._money_round(debt_adjustment),
                 total_amount_rub=total,
                 issued_items_total=self._money_round(issued_count_by_user[user.id]),
                 details=details,
             )
             results.append(result)
 
-            db_items.append(
-                PayrollItem(
-                    run_id=run.id,
-                    user_id=user.id,
-                    shifts_count=result.shifts_count,
-                    hours_total=result.hours_total,
-                    base_amount_rub=result.base_amount_rub,
-                    motivation_amount_rub=result.motivation_amount_rub,
-                    issued_bonus_rub=result.issued_bonus_rub,
-                    reserve_bonus_rub=result.reserve_bonus_rub,
-                    substitution_bonus_rub=result.substitution_bonus_rub,
-                    dispute_deduction_rub=result.dispute_deduction_rub,
-                    manager_bonus_rub=result.manager_bonus_rub,
-                    adjustments_rub=result.adjustments_rub,
-                    total_amount_rub=result.total_amount_rub,
-                    details_json=json.dumps(result.details, ensure_ascii=False),
-                )
-            )
-
-        await self.payroll_repo.add_items(db_items)
-        return run.id, results
+        return results
 
     async def latest_for_user(self, user_id: int) -> PayrollItem | None:
         return await self.payroll_repo.latest_user_item(user_id)
@@ -323,6 +445,13 @@ class PayrollService:
         first = normalized.split()[0]
         return user_id_by_last_name.get(first)
 
+    @staticmethod
+    def _is_appeal_deduction(appeal: Appeal) -> bool:
+        status = normalize_text(appeal.status or "")
+        if appeal.charge_to_manager:
+            return True
+        return ("not_appealed" in status) or ("не оспор" in status)
+
     async def _calc_manager_bonus_for_tenth(
         self,
         period_end: date,
@@ -357,6 +486,57 @@ class PayrollService:
                 bonus_by_user[user_id] += tickets_by_user[user_id] * Decimal(self.settings.manager_bonus_3_per_ticket)
 
         return bonus_by_user
+
+    @staticmethod
+    def _to_decimal(value: object, *, default: Decimal = ZERO) -> Decimal:
+        if value is None:
+            return default
+        if isinstance(value, Decimal):
+            return value
+        if isinstance(value, (int, float)):
+            return Decimal(str(value))
+        s = str(value).strip()
+        if not s:
+            return default
+        s = s.replace(",", ".")
+        try:
+            return Decimal(s)
+        except (InvalidOperation, ValueError):
+            return default
+
+    def _normalize_user_inputs(
+        self,
+        user_inputs: Mapping[int | str, PayrollUserInput | Mapping[str, object]] | None,
+    ) -> dict[int, PayrollUserInput]:
+        normalized: dict[int, PayrollUserInput] = {}
+        if not user_inputs:
+            return normalized
+
+        for raw_user_id, raw_input in user_inputs.items():
+            try:
+                user_id = int(raw_user_id)
+            except (TypeError, ValueError):
+                continue
+
+            if isinstance(raw_input, PayrollUserInput):
+                normalized[user_id] = raw_input
+                continue
+
+            if not isinstance(raw_input, Mapping):
+                continue
+
+            issued_raw = raw_input.get("issued_bonus_rub")
+            issued_value = None
+            if issued_raw is not None and str(issued_raw).strip() != "":
+                issued_value = self._to_decimal(issued_raw, default=ZERO)
+
+            normalized[user_id] = PayrollUserInput(
+                issued_bonus_rub=issued_value,
+                rating_bonus_rub=self._to_decimal(raw_input.get("rating_bonus_rub"), default=ZERO),
+                debt_adjustment_rub=self._to_decimal(raw_input.get("debt_adjustment_rub"), default=ZERO),
+            )
+
+        return normalized
 
     @staticmethod
     def _money_round(value: Decimal) -> Decimal:

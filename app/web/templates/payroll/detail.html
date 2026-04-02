@@ -44,13 +44,15 @@
                 <th class="text-center">Смены</th>
                 <th class="text-end">Часы</th>
                 <th class="text-end">База</th>
-                <th class="text-end">Мотивация</th>
-                <th class="text-end">Бонус выд.</th>
+                <th class="text-end">Скорость</th>
+                <th class="text-end">Рейтинг</th>
+                <th class="text-end">Выдача</th>
                 <th class="text-end">Резерв</th>
                 <th class="text-end">Рез. выход</th>
                 <th class="text-end">Удержания</th>
                 <th class="text-end">Бонус мен.</th>
-                <th class="text-end">Корректир.</th>
+                <th class="text-end">Прем/удерж</th>
+                <th class="text-end">Долг/ДС</th>
                 <th class="text-end fw-bold">Итого</th>
                 <th></th>
             </tr>
@@ -64,12 +66,14 @@
                 <td class="text-end">{{ "%.1f"|format(item.hours_total|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.base_amount_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.motivation_amount_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.rating_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.issued_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.reserve_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.substitution_bonus_rub|float) }}</td>
                 <td class="text-end text-danger">{{ "%.2f"|format(item.dispute_deduction_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.manager_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.adjustments_rub|float) }}</td>
+                <td class="text-end">{{ "%.2f"|format(item.debt_adjustment_rub|float) }}</td>
                 <td class="text-end fw-bold">{{ "%.2f"|format(item.total_amount_rub|float) }} ₽</td>
                 <td>
                     <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}" class="btn btn-sm btn-outline-primary" title="Расчётный лист">

@@ -93,6 +93,16 @@ def _ensure_payroll_item_columns(sync_conn) -> None:
         statements.append("ALTER TABLE payroll_items ADD COLUMN reserve_bonus_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
     if "substitution_bonus_rub" not in existing_cols:
         statements.append("ALTER TABLE payroll_items ADD COLUMN substitution_bonus_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
+    if "rating_bonus_rub" not in existing_cols:
+        statements.append("ALTER TABLE payroll_items ADD COLUMN rating_bonus_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
+    if "stuck_deduction_rub" not in existing_cols:
+        statements.append("ALTER TABLE payroll_items ADD COLUMN stuck_deduction_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
+    if "substitution_deduction_rub" not in existing_cols:
+        statements.append("ALTER TABLE payroll_items ADD COLUMN substitution_deduction_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
+    if "defect_deduction_rub" not in existing_cols:
+        statements.append("ALTER TABLE payroll_items ADD COLUMN defect_deduction_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
+    if "debt_adjustment_rub" not in existing_cols:
+        statements.append("ALTER TABLE payroll_items ADD COLUMN debt_adjustment_rub NUMERIC(12,2) NOT NULL DEFAULT 0")
 
     for stmt in statements:
         sync_conn.execute(text(stmt))

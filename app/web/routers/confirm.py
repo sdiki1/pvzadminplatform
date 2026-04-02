@@ -107,6 +107,7 @@ async def _exec_payroll_generate(payload: dict, db: AsyncSession, current_user: 
     period_start = date.fromisoformat(payload["period_start"])
     period_end = date.fromisoformat(payload["period_end"])
     payout_day = int(payload["payout_day"])
+    user_inputs = payload.get("user_inputs") or {}
 
     settings = get_settings()
     service = PayrollService(db, settings)
@@ -115,6 +116,7 @@ async def _exec_payroll_generate(payload: dict, db: AsyncSession, current_user: 
         period_end=period_end,
         payout_day=payout_day,
         generated_by=current_user.id,
+        user_inputs=user_inputs,
     )
     return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
 

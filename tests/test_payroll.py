@@ -450,3 +450,143 @@ def test_payroll_periods() -> None:
 
     p25 = payroll_period_for_payout(25, date(2026, 3, 25))
     assert p25 == (date(2026, 3, 1), date(2026, 3, 15))
+
+
+@pytest.mark.asyncio
+async def test_payroll_manual_inputs_and_appeal_deductions_by_type() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    Session = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    settings = Settings(
+        BOT_TOKEN="123:token",
+        ADMIN_IDS="",
+        DATABASE_URL="sqlite+aiosqlite:///:memory:",
+    )
+
+    async with Session() as session:
+        user = User(
+            telegram_id=5001,
+            full_name="Лобигер Александра",
+            last_name="Лобигер",
+            shift_rate_rub=Decimal("2500"),
+        )
+        session.add(user)
+        await session.flush()
+
+        point = Point(
+            name="WB Гоголя 18",
+            address="Лесной, Гоголя 18",
+            brand=BrandEnum.WB,
+            latitude=58.6352,
+            longitude=59.7852,
+            radius_m=150,
+            work_start=time(9, 0),
+            work_end=time(21, 0),
+            is_active=True,
+        )
+        session.add(point)
+        await session.flush()
+
+        session.add(
+            Shift(
+                user_id=user.id,
+                point_id=point.id,
+                shift_date=date(2026, 2, 20),
+                state=ShiftState.CLOSED,
+                opened_at=datetime(2026, 2, 20, 9, 0),
+                open_lat=58.6352,
+                open_lon=59.7852,
+                open_distance_m=10,
+                open_geo_status=GeoStatus.OK,
+                open_approval_status=ApprovalStatus.APPROVED,
+                closed_at=datetime(2026, 2, 20, 21, 0),
+                close_lat=58.6352,
+                close_lon=59.7852,
+                close_distance_m=12,
+                close_geo_status=GeoStatus.OK,
+                close_approval_status=ApprovalStatus.APPROVED,
+                duration_minutes=720,
+            )
+        )
+
+        session.add(
+            MotivationRecord(
+                source=MotivationSource.MAIN,
+                record_date=date(2026, 2, 20),
+                point_id=point.id,
+                user_id=user.id,
+                manager_name="Лобигер",
+                acceptance_amount_rub=Decimal("100"),
+                issued_items_count=350,
+                tickets_count=0,
+                disputed_amount_rub=Decimal("0"),
+            )
+        )
+
+        session.add_all(
+            [
+                Appeal(
+                    case_date=date(2026, 2, 18),
+                    point_id=point.id,
+                    appeal_type="stuck",
+                    barcode="S-1",
+                    ticket_number="TK-1",
+                    amount=Decimal("50"),
+                    status="not_appealed",
+                    assigned_manager_employee_id=user.id,
+                ),
+                Appeal(
+                    case_date=date(2026, 2, 19),
+                    point_id=point.id,
+                    appeal_type="substitution",
+                    barcode="S-2",
+                    ticket_number="TK-2",
+                    amount=Decimal("60"),
+                    status="not_appealed",
+                    assigned_manager_employee_id=user.id,
+                ),
+                Appeal(
+                    case_date=date(2026, 2, 20),
+                    point_id=point.id,
+                    appeal_type="defect",
+                    barcode="S-3",
+                    ticket_number="TK-3",
+                    amount=Decimal("70"),
+                    status="not_appealed",
+                    assigned_manager_employee_id=user.id,
+                ),
+            ]
+        )
+        await session.commit()
+
+        payroll_service = PayrollService(session, settings)
+        _, rows = await payroll_service.run_payroll(
+            period_start=date(2026, 2, 16),
+            period_end=date(2026, 2, 28),
+            payout_day=10,
+            generated_by=None,
+            user_inputs={
+                user.id: {
+                    "issued_bonus_rub": "900",
+                    "rating_bonus_rub": "123",
+                    "debt_adjustment_rub": "-50",
+                }
+            },
+        )
+
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.base_amount_rub == Decimal("2500.00")
+        assert row.motivation_amount_rub == Decimal("100.00")
+        assert row.issued_bonus_rub == Decimal("900.00")
+        assert row.rating_bonus_rub == Decimal("123.00")
+        assert row.stuck_deduction_rub == Decimal("50.00")
+        assert row.substitution_deduction_rub == Decimal("60.00")
+        assert row.defect_deduction_rub == Decimal("70.00")
+        assert row.dispute_deduction_rub == Decimal("180.00")
+        assert row.subtotal_amount_rub == Decimal("3443.00")
+        assert row.debt_adjustment_rub == Decimal("-50.00")
+        assert row.total_amount_rub == Decimal("3393.00")

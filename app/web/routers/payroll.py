@@ -1,32 +1,139 @@
 from __future__ import annotations
 
-import io
 import json
-from datetime import date, datetime, timedelta
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.models import (
-    PayrollItem,
-    PayrollRun,
-    User,
-)
+from app.db.models import PayrollRun, User
 from app.db.repositories import PayrollRepo, UserRepo
 from app.services.email import EmailService
 from app.services.payroll import PayrollService
 from app.services.reports import ReportService
-from app.web.deps import get_current_user, get_db, require_manager
+from app.web.deps import get_db, require_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
+
+
+def _safe_payout_day(value: object, default: int = 10) -> int:
+    try:
+        day = int(value)
+    except (TypeError, ValueError):
+        return default
+    return day if day in (10, 25) else default
+
+
+def _parse_iso_date(value: object) -> date | None:
+    try:
+        return date.fromisoformat(str(value or ""))
+    except (ValueError, TypeError):
+        return None
+
+
+async def _build_generate_context(
+    db: AsyncSession,
+    payout_day: int,
+    period_start_raw: str,
+    period_end_raw: str,
+    error: str | None = None,
+) -> dict:
+    from app.utils.dates import payroll_period_for_payout
+
+    settings = get_settings()
+    today = date.today()
+    p10_start, p10_end = payroll_period_for_payout(10, today)
+    p25_start, p25_end = payroll_period_for_payout(25, today)
+
+    payout_day_selected = _safe_payout_day(payout_day)
+
+    default_start = p10_start.isoformat() if payout_day_selected == 10 else p25_start.isoformat()
+    default_end = p10_end.isoformat() if payout_day_selected == 10 else p25_end.isoformat()
+
+    period_start_value = (period_start_raw or default_start).strip()
+    period_end_value = (period_end_raw or default_end).strip()
+
+    parsed_start = _parse_iso_date(period_start_value)
+    parsed_end = _parse_iso_date(period_end_value)
+
+    preview_rows: list[dict] = []
+    preview_error: str | None = None
+
+    if parsed_start and parsed_end:
+        if parsed_start > parsed_end:
+            preview_error = "Начало периода не может быть позже конца периода"
+        else:
+            svc = PayrollService(db, settings)
+            rows = await svc.preview_payroll(
+                period_start=parsed_start,
+                period_end=parsed_end,
+                payout_day=payout_day_selected,
+            )
+            rows = sorted(rows, key=lambda r: (r.user.full_name or "").lower())
+            for row in rows:
+                subtotal_base = (Decimal(row.subtotal_amount_rub) - Decimal(row.issued_bonus_rub)).quantize(Decimal("0.01"))
+                preview_rows.append({
+                    "user_id": row.user.id,
+                    "full_name": row.user.full_name,
+                    "speed_bonus_rub": row.motivation_amount_rub,
+                    "issued_bonus_auto_rub": row.issued_bonus_rub,
+                    "reserve_bonus_rub": row.reserve_bonus_rub,
+                    "substitution_bonus_rub": row.substitution_bonus_rub,
+                    "stuck_deduction_rub": row.stuck_deduction_rub,
+                    "substitution_deduction_rub": row.substitution_deduction_rub,
+                    "defect_deduction_rub": row.defect_deduction_rub,
+                    "manager_bonus_rub": row.manager_bonus_rub,
+                    "adjustments_rub": row.adjustments_rub,
+                    "subtotal_base_rub": subtotal_base,
+                    "subtotal_amount_rub": row.subtotal_amount_rub,
+                    "total_amount_rub": row.total_amount_rub,
+                })
+    elif period_start_raw or period_end_raw:
+        preview_error = "Укажите корректные даты периода"
+
+    return {
+        "today": today,
+        "p10_start": p10_start.isoformat(),
+        "p10_end": p10_end.isoformat(),
+        "p25_start": p25_start.isoformat(),
+        "p25_end": p25_end.isoformat(),
+        "payout_day_selected": payout_day_selected,
+        "period_start_value": period_start_value,
+        "period_end_value": period_end_value,
+        "manager_bonus_3_per_ticket": settings.manager_bonus_3_per_ticket,
+        "preview_rows": preview_rows,
+        "preview_error": preview_error,
+        "error": error,
+    }
+
+
+def _collect_user_inputs_from_form(form) -> dict[str, dict[str, str]]:
+    user_inputs: dict[str, dict[str, str]] = {}
+    for raw_uid in form.getlist("employee_ids"):
+        uid_str = str(raw_uid).strip()
+        if not uid_str.isdigit():
+            continue
+
+        issued_raw = str(form.get(f"issued_bonus_rub_{uid_str}", "")).strip().replace(",", ".")
+        rating_raw = str(form.get(f"rating_bonus_rub_{uid_str}", "")).strip().replace(",", ".")
+        debt_raw = str(form.get(f"debt_adjustment_rub_{uid_str}", "")).strip().replace(",", ".")
+
+        user_inputs[uid_str] = {
+            "issued_bonus_rub": issued_raw,
+            "rating_bonus_rub": rating_raw,
+            "debt_adjustment_rub": debt_raw,
+        }
+
+    return user_inputs
 
 
 @router.get("", response_class=HTMLResponse)
@@ -48,26 +155,18 @@ async def list_payroll_runs(
 @router.get("/generate", response_class=HTMLResponse)
 async def generate_form(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     current_user=Depends(require_manager),
+    payout_day: int = 10,
+    period_start: str = "",
+    period_end: str = "",
 ):
-    from app.utils.dates import payroll_period_for_payout
-
-    settings = get_settings()
-    today = date.today()
-    p10_start, p10_end = payroll_period_for_payout(10, today)
-    p25_start, p25_end = payroll_period_for_payout(25, today)
-
-    return templates.TemplateResponse(request, "payroll/generate.html", {
+    context = await _build_generate_context(db, payout_day, period_start, period_end)
+    context.update({
         "current_user": current_user,
         "active_page": "payroll",
-        "today": today,
-        "p10_start": p10_start.isoformat(),
-        "p10_end": p10_end.isoformat(),
-        "p25_start": p25_start.isoformat(),
-        "p25_end": p25_end.isoformat(),
-        "manager_bonus_3_per_ticket": settings.manager_bonus_3_per_ticket,
-        "error": None,
     })
+    return templates.TemplateResponse(request, "payroll/generate.html", context)
 
 
 @router.post("/generate")
@@ -77,30 +176,27 @@ async def generate_payroll(
     current_user=Depends(require_manager),
 ):
     form = await request.form()
-    payout_day = int(form.get("payout_day", 10))
-    period_start_str = form.get("period_start", "")
-    period_end_str = form.get("period_end", "")
+    payout_day = _safe_payout_day(form.get("payout_day", 10))
+    period_start_str = str(form.get("period_start", "")).strip()
+    period_end_str = str(form.get("period_end", "")).strip()
 
-    try:
-        period_start = date.fromisoformat(period_start_str)
-        period_end = date.fromisoformat(period_end_str)
-    except (ValueError, TypeError):
-        from app.utils.dates import payroll_period_for_payout
-
-        today = date.today()
-        p10_start, p10_end = payroll_period_for_payout(10, today)
-        p25_start, p25_end = payroll_period_for_payout(25, today)
-        return templates.TemplateResponse(request, "payroll/generate.html", {
+    period_start = _parse_iso_date(period_start_str)
+    period_end = _parse_iso_date(period_end_str)
+    if not period_start or not period_end:
+        context = await _build_generate_context(
+            db,
+            payout_day,
+            period_start_str,
+            period_end_str,
+            error="Укажите корректные даты периода",
+        )
+        context.update({
             "current_user": current_user,
             "active_page": "payroll",
-            "today": today,
-            "p10_start": p10_start.isoformat(),
-            "p10_end": p10_end.isoformat(),
-            "p25_start": p25_start.isoformat(),
-            "p25_end": p25_end.isoformat(),
-            "manager_bonus_3_per_ticket": get_settings().manager_bonus_3_per_ticket,
-            "error": "Укажите корректные даты периода",
         })
+        return templates.TemplateResponse(request, "payroll/generate.html", context)
+
+    user_inputs = _collect_user_inputs_from_form(form)
 
     settings = get_settings()
     email_svc = EmailService(settings)
@@ -109,10 +205,14 @@ async def generate_payroll(
             "payout_day": payout_day,
             "period_start": period_start.isoformat(),
             "period_end": period_end.isoformat(),
+            "user_inputs": user_inputs,
         }
         await email_svc.send_confirmation_code(
-            db, current_user.id, current_user.email,
-            "payroll_generate", json.dumps(payload),
+            db,
+            current_user.id,
+            current_user.email,
+            "payroll_generate",
+            json.dumps(payload, ensure_ascii=False),
         )
         return RedirectResponse(url="/confirm/verify?operation=payroll_generate", status_code=302)
 
@@ -122,6 +222,7 @@ async def generate_payroll(
         period_end=period_end,
         payout_day=payout_day,
         generated_by=current_user.id,
+        user_inputs=user_inputs,
     )
 
     return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
@@ -166,6 +267,8 @@ async def view_employee_sheet(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_manager),
 ):
+    from app.db.models import PayrollItem
+
     result = await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
@@ -208,23 +311,32 @@ async def export_payroll_xlsx(
     users_map = {u.id: u for u in users}
 
     from app.services.payroll import EmployeePayrollBreakdown
+
     breakdowns = []
     for item in items:
         user = users_map.get(item.user_id)
         if not user:
             continue
+
+        subtotal = Decimal(item.total_amount_rub or 0) - Decimal(item.debt_adjustment_rub or 0)
         breakdowns.append(EmployeePayrollBreakdown(
             user=user,
             shifts_count=item.shifts_count,
             hours_total=item.hours_total or 0,
             base_amount_rub=item.base_amount_rub or 0,
             motivation_amount_rub=item.motivation_amount_rub or 0,
+            rating_bonus_rub=item.rating_bonus_rub or 0,
             issued_bonus_rub=item.issued_bonus_rub or 0,
             reserve_bonus_rub=item.reserve_bonus_rub or 0,
             substitution_bonus_rub=item.substitution_bonus_rub or 0,
+            stuck_deduction_rub=item.stuck_deduction_rub or 0,
+            substitution_deduction_rub=item.substitution_deduction_rub or 0,
+            defect_deduction_rub=item.defect_deduction_rub or 0,
             dispute_deduction_rub=item.dispute_deduction_rub or 0,
             manager_bonus_rub=item.manager_bonus_rub or 0,
             adjustments_rub=item.adjustments_rub or 0,
+            subtotal_amount_rub=subtotal,
+            debt_adjustment_rub=item.debt_adjustment_rub or 0,
             total_amount_rub=item.total_amount_rub or 0,
             issued_items_total=0,
             details={},
@@ -264,23 +376,32 @@ async def export_employee_sheets_xlsx(
     users_map = {u.id: u for u in users}
 
     from app.services.payroll import EmployeePayrollBreakdown
+
     breakdowns = []
     for item in items:
         user = users_map.get(item.user_id)
         if not user:
             continue
+
+        subtotal = Decimal(item.total_amount_rub or 0) - Decimal(item.debt_adjustment_rub or 0)
         breakdowns.append(EmployeePayrollBreakdown(
             user=user,
             shifts_count=item.shifts_count,
             hours_total=item.hours_total or 0,
             base_amount_rub=item.base_amount_rub or 0,
             motivation_amount_rub=item.motivation_amount_rub or 0,
+            rating_bonus_rub=item.rating_bonus_rub or 0,
             issued_bonus_rub=item.issued_bonus_rub or 0,
             reserve_bonus_rub=item.reserve_bonus_rub or 0,
             substitution_bonus_rub=item.substitution_bonus_rub or 0,
+            stuck_deduction_rub=item.stuck_deduction_rub or 0,
+            substitution_deduction_rub=item.substitution_deduction_rub or 0,
+            defect_deduction_rub=item.defect_deduction_rub or 0,
             dispute_deduction_rub=item.dispute_deduction_rub or 0,
             manager_bonus_rub=item.manager_bonus_rub or 0,
             adjustments_rub=item.adjustments_rub or 0,
+            subtotal_amount_rub=subtotal,
+            debt_adjustment_rub=item.debt_adjustment_rub or 0,
             total_amount_rub=item.total_amount_rub or 0,
             issued_items_total=0,
             details={},

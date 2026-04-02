@@ -56,8 +56,12 @@
                 <td class="amount">{{ "%.2f"|format(item.base_amount_rub|float) }} ₽</td>
             </tr>
             <tr>
-                <td class="label">Мотивирующие начисления</td>
+                <td class="label">Премия за скорость приёмки</td>
                 <td class="amount">{{ "%.2f"|format(item.motivation_amount_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Премия за рейтинг, оценки клиентов</td>
+                <td class="amount">{{ "%.2f"|format(item.rating_bonus_rub|float) }} ₽</td>
             </tr>
             <tr>
                 <td class="label">Премия за выдачу</td>
@@ -72,8 +76,24 @@
                 <td class="amount">{{ "%.2f"|format(item.substitution_bonus_rub|float) }} ₽</td>
             </tr>
             <tr>
+                <td class="label">Зависшие товары</td>
+                <td class="amount text-danger">−{{ "%.2f"|format(item.stuck_deduction_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Подмена товара</td>
+                <td class="amount text-danger">−{{ "%.2f"|format(item.substitution_deduction_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Брак товара</td>
+                <td class="amount text-danger">−{{ "%.2f"|format(item.defect_deduction_rub|float) }} ₽</td>
+            </tr>
+            <tr>
                 <td class="label">Удержания по товарам (не оспорено)</td>
                 <td class="amount text-danger">−{{ "%.2f"|format(item.dispute_deduction_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Подытог (без ДС)</td>
+                <td class="amount">{{ "%.2f"|format((item.total_amount_rub - item.debt_adjustment_rub)|float) }} ₽</td>
             </tr>
             {% if item.manager_bonus_rub and item.manager_bonus_rub|float > 0 %}
             <tr>
@@ -99,6 +119,10 @@
             <tr>
                 <td class="label">Премия / удержание руководства</td>
                 <td class="amount">{{ "%.2f"|format(item.adjustments_rub|float) }} ₽</td>
+            </tr>
+            <tr>
+                <td class="label">Долг / Переплата ДС</td>
+                <td class="amount">{{ "%.2f"|format(item.debt_adjustment_rub|float) }} ₽</td>
             </tr>
             <tr class="payslip-total">
                 <td>ИТОГО К ВЫПЛАТЕ</td>
