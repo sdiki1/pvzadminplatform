@@ -86,12 +86,19 @@
 
     {% if upcoming_planned %}
     <table class="table table-sm">
-        <thead><tr><th>Дата</th><th>Точка</th><th>Примечание</th><th></th></tr></thead>
+        <thead><tr><th>Дата</th><th>Точка</th><th>Время</th><th>Примечание</th><th></th></tr></thead>
         <tbody>
             {% for ps in upcoming_planned %}
             <tr>
                 <td>{{ ps.shift_date.strftime('%d.%m %a') }}</td>
                 <td>{{ points_map.get(ps.point_id).name if points_map.get(ps.point_id) else '—' }}</td>
+                <td>
+                    {% if ps.start_time and ps.end_time %}
+                    {{ ps.start_time.strftime('%H:%M') }}-{{ ps.end_time.strftime('%H:%M') }}
+                    {% else %}
+                    <span class="text-muted">Весь день</span>
+                    {% endif %}
+                </td>
                 <td class="text-muted small">{{ ps.notes or '' }}</td>
                 <td>
                     <form method="post" action="/my/schedule/{{ ps.id }}/delete" style="display:inline">
@@ -124,6 +131,14 @@
                 <option value="{{ p.id }}">{{ p.name }}</option>
                 {% endfor %}
             </select>
+        </div>
+        <div>
+            <label class="form-label mb-1 small fw-semibold">С</label>
+            <input type="time" class="form-control form-control-sm" name="start_time" value="09:00" style="min-width:120px">
+        </div>
+        <div>
+            <label class="form-label mb-1 small fw-semibold">По</label>
+            <input type="time" class="form-control form-control-sm" name="end_time" value="21:00" style="min-width:120px">
         </div>
         <div>
             <label class="form-label mb-1 small fw-semibold">Примечание</label>

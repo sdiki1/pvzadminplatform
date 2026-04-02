@@ -212,7 +212,7 @@
         </button>
     </div>
     <div class="row g-2 align-items-end">
-        <div class="col-md-3">
+        <div class="col-md-2">
             <label for="fillPoint" class="form-label small fw-semibold mb-1">ПВЗ</label>
             <select id="fillPoint" class="form-select form-select-sm">
                 <option value="">— выберите —</option>
@@ -221,7 +221,7 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <label for="fillUser" class="form-label small fw-semibold mb-1">Сотрудник</label>
             <select id="fillUser" class="form-select form-select-sm">
                 <option value="">— выберите —</option>
@@ -230,11 +230,19 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
+            <label for="fillStartTime" class="form-label small fw-semibold mb-1">С</label>
+            <input id="fillStartTime" type="time" class="form-control form-control-sm" value="09:00">
+        </div>
+        <div class="col-md-2">
+            <label for="fillEndTime" class="form-label small fw-semibold mb-1">По</label>
+            <input id="fillEndTime" type="time" class="form-control form-control-sm" value="21:00">
+        </div>
+        <div class="col-md-2">
             <label for="fillNotes" class="form-label small fw-semibold mb-1">Заметка (необязательно)</label>
             <input id="fillNotes" type="text" class="form-control form-control-sm" placeholder="например: подмена">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <label class="form-label small fw-semibold mb-1">Доплаты</label>
             <div class="shift-extra-box">
                 <div class="form-check">
@@ -267,6 +275,7 @@
         <tbody>
             <tr><td class="text-muted" style="width:110px">Точка</td><td id="popupPoint"></td></tr>
             <tr><td class="text-muted">Дата</td><td id="popupDate"></td></tr>
+            <tr id="popupTimeRow"><td class="text-muted">Время</td><td id="popupTime"></td></tr>
             <tr id="popupStateRow"><td class="text-muted">Статус</td><td id="popupState"></td></tr>
             <tr id="popupDurationRow"><td class="text-muted">Длительность</td><td id="popupDuration"></td></tr>
             <tr id="popupBonusRow"><td class="text-muted">Доплаты</td><td id="popupBonus"></td></tr>
@@ -304,6 +313,16 @@
             <option value="{{ p.id }}">{{ p.name }}</option>
             {% endfor %}
         </select>
+    </div>
+    <div class="row g-2 mb-3">
+        <div class="col-6">
+            <label class="form-label small fw-semibold">С</label>
+            <input type="time" id="bookStartTime" class="form-control form-control-sm" value="09:00">
+        </div>
+        <div class="col-6">
+            <label class="form-label small fw-semibold">По</label>
+            <input type="time" id="bookEndTime" class="form-control form-control-sm" value="21:00">
+        </div>
     </div>
     <div class="mb-3">
         <label class="form-label small fw-semibold">Заметка <span class="text-muted fw-normal">(необязательно)</span></label>
@@ -364,10 +383,29 @@
         bookModalBackdrop.style.display = 'none';
         document.getElementById('bookError').style.display = 'none';
     }
+
+    function minutesFromTime(text) {
+        if (!text || text.indexOf(':') < 0) return null;
+        var parts = text.split(':');
+        var h = Number(parts[0]);
+        var m = Number(parts[1]);
+        if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+        if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+        return (h * 60) + m;
+    }
+
+    function isValidTimeRange(startTime, endTime) {
+        var startMin = minutesFromTime(startTime);
+        var endMin = minutesFromTime(endTime);
+        return startMin !== null && endMin !== null && endMin > startMin;
+    }
+
     function openBook(dateStr, preset) {
         document.getElementById('bookDate').value  = dateStr || '';
         document.getElementById('bookUser').value  = '';
         document.getElementById('bookPoint').value = '';
+        document.getElementById('bookStartTime').value = '09:00';
+        document.getElementById('bookEndTime').value = '21:00';
         document.getElementById('bookNotes').value = '';
         var reserveVal = reserveMode;
         var reserveExitVal = false;
@@ -376,6 +414,12 @@
         }
         if (preset && typeof preset.isReserveExit !== 'undefined') {
             reserveExitVal = !!preset.isReserveExit;
+        }
+        if (preset && preset.startTime) {
+            document.getElementById('bookStartTime').value = preset.startTime;
+        }
+        if (preset && preset.endTime) {
+            document.getElementById('bookEndTime').value = preset.endTime;
         }
         document.getElementById('bookReserve').checked = reserveVal;
         document.getElementById('bookSubstitution').checked = reserveExitVal;
@@ -400,6 +444,8 @@
         var dateVal  = document.getElementById('bookDate').value;
         var userId   = document.getElementById('bookUser').value;
         var pointId  = document.getElementById('bookPoint').value;
+        var startTime = document.getElementById('bookStartTime').value;
+        var endTime = document.getElementById('bookEndTime').value;
         var notes    = document.getElementById('bookNotes').value.trim();
         var isReserve = document.getElementById('bookReserve').checked;
         var isSubstitution = document.getElementById('bookSubstitution').checked;
@@ -407,6 +453,11 @@
 
         if (!dateVal || !userId || !pointId) {
             errEl.textContent = 'Заполните дату, сотрудника и точку';
+            errEl.style.display = 'block';
+            return;
+        }
+        if (!isValidTimeRange(startTime, endTime)) {
+            errEl.textContent = 'Укажите корректный интервал времени (например, 09:00-21:00)';
             errEl.style.display = 'block';
             return;
         }
@@ -419,6 +470,8 @@
                 shift_date: dateVal,
                 user_id: +userId,
                 point_id: +pointId,
+                start_time: startTime,
+                end_time: endTime,
                 notes: notes,
                 is_reserve: isReserve,
                 is_substitution: isSubstitution,
@@ -430,7 +483,11 @@
                 closeBook();
                 calendar.refetchEvents();
             } else {
-                errEl.textContent = data.error || 'Ошибка сохранения';
+                var apiError = data.error || 'Ошибка сохранения';
+                if (apiError === 'invalid_time') apiError = 'Некорректный формат времени';
+                if (apiError === 'time_range_required') apiError = 'Укажите время начала и окончания';
+                if (apiError === 'time_range_invalid') apiError = 'Время окончания должно быть позже начала';
+                errEl.textContent = apiError;
                 errEl.style.display = 'block';
             }
         })
@@ -445,6 +502,8 @@
     var fillStatus    = document.getElementById('fillModeStatus');
     var fillPoint     = document.getElementById('fillPoint');
     var fillUser      = document.getElementById('fillUser');
+    var fillStartTime = document.getElementById('fillStartTime');
+    var fillEndTime   = document.getElementById('fillEndTime');
     var fillNotes     = document.getElementById('fillNotes');
     var fillReserve   = document.getElementById('fillReserve');
     var fillSubst     = document.getElementById('fillSubstitution');
@@ -491,6 +550,8 @@
         return {
             userId: Number(fillUser.value || 0),
             pointId: Number(fillPoint.value || 0),
+            startTime: fillStartTime.value || '',
+            endTime: fillEndTime.value || '',
             notes: fillNotes.value.trim(),
             isReserve: reserveMode ? true : fillReserve.checked,
             isSubstitution: fillSubst.checked,
@@ -540,16 +601,23 @@
             setFillStatus('Выберите ПВЗ и сотрудника перед кликом по дате.', 'err');
             return;
         }
+        if (!isValidTimeRange(sel.startTime, sel.endTime)) {
+            setFillStatus('Укажите корректный интервал времени в панели заполнения.', 'err');
+            return;
+        }
 
         fillMode.busy = true;
         var planned = findPlannedEvent(dateStr, sel.userId);
         var actionPromise;
 
         var samePoint = planned && Number(planned.extendedProps.point_id) === sel.pointId;
+        var sameTime = planned
+            && String(planned.extendedProps.start_time || '') === String(sel.startTime || '')
+            && String(planned.extendedProps.end_time || '') === String(sel.endTime || '');
         var sameReserve = planned && Boolean(planned.extendedProps.is_reserve) === Boolean(sel.isReserve);
         var sameSubstitution = planned && Boolean(planned.extendedProps.is_substitution) === Boolean(sel.isSubstitution);
 
-        if (planned && samePoint && sameReserve && sameSubstitution) {
+        if (planned && samePoint && sameTime && sameReserve && sameSubstitution) {
             actionPromise = removePlannedShift(planned.extendedProps.planned_id).then(function () {
                 return 'removed';
             });
@@ -558,6 +626,8 @@
                 shift_date: dateStr,
                 user_id: sel.userId,
                 point_id: sel.pointId,
+                start_time: sel.startTime,
+                end_time: sel.endTime,
                 notes: sel.notes,
                 is_reserve: sel.isReserve,
                 is_substitution: sel.isSubstitution,
@@ -678,6 +748,7 @@
             document.getElementById('popupDate').textContent     = niceDateStr;
 
             var kindBadgeEl = document.getElementById('popupKindBadge');
+            var timeRow     = document.getElementById('popupTimeRow');
             var stateRow    = document.getElementById('popupStateRow');
             var durRow      = document.getElementById('popupDurationRow');
             var bonusRow    = document.getElementById('popupBonusRow');
@@ -686,6 +757,12 @@
 
             if (p.kind === 'planned') {
                 kindBadgeEl.innerHTML = '<span class="popup-badge badge-planned">Запланирована</span>';
+                if (p.start_time && p.end_time) {
+                    timeRow.style.display = '';
+                    document.getElementById('popupTime').textContent = p.start_time + '-' + p.end_time;
+                } else {
+                    timeRow.style.display = 'none';
+                }
                 stateRow.style.display    = 'none';
                 durRow.style.display      = 'none';
                 var extras = [];
@@ -708,6 +785,7 @@
 
                 kindBadgeEl.innerHTML = '<span class="popup-badge ' + stateBadgeClass + '">'
                     + (stateLabels[p.state] || p.state) + '</span>';
+                timeRow.style.display     = 'none';
                 stateRow.style.display    = 'none'; // badge already shows state
                 durRow.style.display      = '';
                 bonusRow.style.display    = 'none';

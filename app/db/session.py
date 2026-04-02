@@ -65,7 +65,7 @@ def _ensure_appeal_columns(sync_conn) -> None:
 
 
 def _ensure_planned_shift_columns(sync_conn) -> None:
-    """Lightweight schema patch for planned shift flags."""
+    """Lightweight schema patch for planned shift flags and time window."""
     try:
         existing_cols = {c["name"] for c in inspect(sync_conn).get_columns("planned_shifts")}
     except Exception:
@@ -76,6 +76,10 @@ def _ensure_planned_shift_columns(sync_conn) -> None:
         statements.append("ALTER TABLE planned_shifts ADD COLUMN is_reserve BOOLEAN NOT NULL DEFAULT FALSE")
     if "is_substitution" not in existing_cols:
         statements.append("ALTER TABLE planned_shifts ADD COLUMN is_substitution BOOLEAN NOT NULL DEFAULT FALSE")
+    if "start_time" not in existing_cols:
+        statements.append("ALTER TABLE planned_shifts ADD COLUMN start_time TIME")
+    if "end_time" not in existing_cols:
+        statements.append("ALTER TABLE planned_shifts ADD COLUMN end_time TIME")
 
     for stmt in statements:
         sync_conn.execute(text(stmt))

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
@@ -51,6 +51,36 @@ def _parse_int(value, default: int = 0) -> int:
         return int(str(value).strip())
     except Exception:
         return default
+
+
+def _parse_time_value(value) -> time | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if len(text) == 5:
+        text = f"{text}:00"
+    try:
+        return time.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _parse_time_range(start_raw, end_raw) -> tuple[time | None, time | None, str | None]:
+    start_text = str(start_raw or "").strip()
+    end_text = str(end_raw or "").strip()
+    start_time = _parse_time_value(start_text)
+    end_time = _parse_time_value(end_text)
+    if (start_text and not start_time) or (end_text and not end_time):
+        return None, None, "invalid_time"
+    if bool(start_time) != bool(end_time):
+        return None, None, "time_range_required"
+    if start_time and end_time and end_time <= start_time:
+        return None, None, "time_range_invalid"
+    return start_time, end_time, None
+
+
+def _time_hhmm(value: time | None) -> str | None:
+    return value.strftime("%H:%M") if value else None
 
 
 @router.get("", response_class=HTMLResponse)
@@ -138,7 +168,11 @@ async def list_shifts(
         planned_query = planned_query.where(PlannedShift.shift_date <= parsed_date_to)
     if show_reserve:
         planned_query = planned_query.where(PlannedShift.is_reserve == True)
-    planned_query = planned_query.order_by(PlannedShift.shift_date.desc(), PlannedShift.id.desc()).limit(500)
+    planned_query = planned_query.order_by(
+        PlannedShift.shift_date.desc(),
+        PlannedShift.start_time.asc(),
+        PlannedShift.id.desc(),
+    ).limit(500)
     planned_items = (await db.execute(planned_query)).scalars().all()
 
     return templates.TemplateResponse(request, "shifts/list.html", {
@@ -314,16 +348,26 @@ async def shift_events(
         title_parts = [user.full_name if user else "?"]
         if point:
             title_parts.append(point.short_name or point.name)
+        time_range = None
+        if p.start_time and p.end_time:
+            time_range = f"{p.start_time.strftime('%H:%M')}-{p.end_time.strftime('%H:%M')}"
+            title_parts.append(time_range)
         if p.is_reserve:
             title_parts.append("РЕЗЕРВ")
         if p.is_substitution:
             title_parts.append("РЕЗ.ВЫХОД")
         # Planned: use user color with amber tint if no personal color
         planned_color = (user.color if user and getattr(user, "color", None) else "#f59e0b")
+        start_value = str(p.shift_date)
+        end_value = None
+        if p.start_time and p.end_time:
+            start_value = f"{p.shift_date.isoformat()}T{p.start_time.isoformat(timespec='minutes')}"
+            end_value = f"{p.shift_date.isoformat()}T{p.end_time.isoformat(timespec='minutes')}"
         events.append({
             "id": f"planned-{p.id}",
             "title": "📅 " + " · ".join(title_parts),
-            "start": str(p.shift_date),
+            "start": start_value,
+            "end": end_value,
             "color": planned_color,
             "borderColor": "#d97706",
             "textColor": "#1a1a1a",
@@ -337,6 +381,9 @@ async def shift_events(
                 "point": point.name if point else None,
                 "employee": user.full_name if user else None,
                 "notes": p.notes or "",
+                "start_time": _time_hhmm(p.start_time),
+                "end_time": _time_hhmm(p.end_time),
+                "time_range": time_range or "",
             },
         })
 
@@ -363,12 +410,18 @@ async def create_planned_shift(
     requested_user_id = _parse_int(data.get("user_id", 0), default=0)
     user_id = requested_user_id if can_manage_all else int(current_user.user_id or 0)
     point_id = _parse_int(data.get("point_id", 0), default=0)
+    start_time, end_time, time_error = _parse_time_range(
+        data.get("start_time", ""),
+        data.get("end_time", ""),
+    )
     notes = str(data.get("notes", "")).strip() or None
     is_reserve = _to_bool(data.get("is_reserve", False))
     is_substitution = _to_bool(data.get("is_substitution", False))
 
     if not user_id or not point_id:
         return JSONResponse({"error": "user_id and point_id required"}, status_code=400)
+    if time_error:
+        return JSONResponse({"error": time_error}, status_code=400)
     if not _can_manage_user_schedule(current_user, user_id):
         return JSONResponse({"error": "forbidden"}, status_code=403)
 
@@ -393,6 +446,8 @@ async def create_planned_shift(
 
     if existing:
         existing.point_id = point_id
+        existing.start_time = start_time
+        existing.end_time = end_time
         existing.notes = notes
         existing.is_reserve = is_reserve
         existing.is_substitution = is_substitution
@@ -401,6 +456,8 @@ async def create_planned_shift(
             user_id=user_id,
             point_id=point_id,
             shift_date=shift_date,
+            start_time=start_time,
+            end_time=end_time,
             is_reserve=is_reserve,
             is_substitution=is_substitution,
             notes=notes,
@@ -446,12 +503,18 @@ async def create_planned_shift_form(
     requested_user_id = _parse_int(form.get("user_id", 0), default=0)
     user_id = requested_user_id if can_manage_all else int(current_user.user_id or 0)
     point_id = _parse_int(form.get("point_id", 0), default=0)
+    start_time, end_time, time_error = _parse_time_range(
+        form.get("start_time", ""),
+        form.get("end_time", ""),
+    )
     notes = str(form.get("notes", "")).strip() or None
     is_reserve = form.get("is_reserve") == "on"
     is_substitution = form.get("is_substitution") == "on"
 
     if not user_id or not point_id:
         return RedirectResponse(url="/shifts?error=required_fields", status_code=302)
+    if time_error:
+        return RedirectResponse(url=f"/shifts?error={time_error}", status_code=302)
     if not _can_manage_user_schedule(current_user, user_id):
         return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
 
@@ -475,6 +538,8 @@ async def create_planned_shift_form(
 
     if existing:
         existing.point_id = point_id
+        existing.start_time = start_time
+        existing.end_time = end_time
         existing.notes = notes
         existing.is_reserve = is_reserve
         existing.is_substitution = is_substitution
@@ -483,6 +548,8 @@ async def create_planned_shift_form(
             user_id=user_id,
             point_id=point_id,
             shift_date=shift_date,
+            start_time=start_time,
+            end_time=end_time,
             notes=notes,
             is_reserve=is_reserve,
             is_substitution=is_substitution,
@@ -520,12 +587,18 @@ async def update_planned_shift_form(
     new_user_id = _parse_int(form.get("user_id", planned.user_id), default=planned.user_id)
     user_id = new_user_id if can_manage_all else planned.user_id
     point_id = _parse_int(form.get("point_id", planned.point_id), default=planned.point_id)
+    start_time, end_time, time_error = _parse_time_range(
+        form.get("start_time", ""),
+        form.get("end_time", ""),
+    )
     notes = str(form.get("notes", "")).strip() or None
     is_reserve = form.get("is_reserve") == "on"
     is_substitution = form.get("is_substitution") == "on"
 
     if not _can_manage_user_schedule(current_user, user_id):
         return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
+    if time_error:
+        return RedirectResponse(url=f"/shifts?error={time_error}", status_code=302)
 
     if can_manage_own and not can_manage_all:
         assignment = (await db.execute(
@@ -550,6 +623,8 @@ async def update_planned_shift_form(
     target.user_id = user_id
     target.point_id = point_id
     target.shift_date = shift_date
+    target.start_time = start_time
+    target.end_time = end_time
     target.notes = notes
     target.is_reserve = is_reserve
     target.is_substitution = is_substitution

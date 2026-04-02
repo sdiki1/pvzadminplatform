@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -18,6 +18,32 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/my", tags=["my"])
 TZ = ZoneInfo("Asia/Yekaterinburg")
+
+
+def _parse_time_value(value) -> time | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if len(text) == 5:
+        text = f"{text}:00"
+    try:
+        return time.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _parse_time_range(start_raw, end_raw) -> tuple[time | None, time | None, bool]:
+    start_text = str(start_raw or "").strip()
+    end_text = str(end_raw or "").strip()
+    start_time = _parse_time_value(start_text)
+    end_time = _parse_time_value(end_text)
+    if (start_text and not start_time) or (end_text and not end_time):
+        return None, None, False
+    if bool(start_time) != bool(end_time):
+        return None, None, False
+    if start_time and end_time and end_time <= start_time:
+        return None, None, False
+    return start_time, end_time, True
 
 
 @router.get("", response_class=HTMLResponse)
@@ -57,7 +83,7 @@ async def my_portal(
             PlannedShift.user_id == current_user.user_id,
             PlannedShift.shift_date >= today,
             PlannedShift.shift_date <= today + timedelta(days=14),
-        ).order_by(PlannedShift.shift_date)
+        ).order_by(PlannedShift.shift_date, PlannedShift.start_time.asc(), PlannedShift.id.asc())
     )).scalars().all()
 
     # Points this employee is assigned to (for shift open dropdown)
@@ -183,6 +209,12 @@ async def add_planned(
     point_id = int(form.get("point_id", 0))
     if not point_id:
         return RedirectResponse(url="/my", status_code=302)
+    start_time, end_time, is_time_range_ok = _parse_time_range(
+        form.get("start_time", ""),
+        form.get("end_time", ""),
+    )
+    if not is_time_range_ok:
+        return RedirectResponse(url="/my", status_code=302)
     notes = str(form.get("notes", "")).strip() or None
 
     existing = (await db.execute(
@@ -194,14 +226,18 @@ async def add_planned(
 
     if existing:
         existing.point_id = point_id
+        existing.start_time = start_time
+        existing.end_time = end_time
         existing.notes = notes
     else:
         db.add(PlannedShift(
             user_id=current_user.user_id,
             point_id=point_id,
             shift_date=shift_date,
+            start_time=start_time,
+            end_time=end_time,
             notes=notes,
-            created_at=datetime.now(TZ),
+            created_at=datetime.now(TZ).replace(tzinfo=None),
         ))
     await db.commit()
     return RedirectResponse(url="/my", status_code=302)
