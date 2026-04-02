@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Appeal, AppealFeedback, Point, User, WebUser
 from app.utils.parsing import parse_date
-from app.web.deps import get_current_user, get_db
+from app.web.deps import can_edit_disputes, get_current_user, get_db, is_restricted_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -53,6 +53,10 @@ async def list_appeals(
     per_page = 25
     query = select(Appeal)
     parsed_date_from = parse_date(date_from) if date_from else None
+
+    # manager: only own appeals (where they are the assigned manager)
+    if is_restricted_manager(current_user) and current_user.user_id:
+        query = query.where(Appeal.assigned_manager_employee_id == current_user.user_id)
     parsed_date_to = parse_date(date_to) if date_to else None
 
     if point_id:
@@ -232,6 +236,9 @@ async def edit_appeal_form(
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
 ):
+    if not can_edit_disputes(current_user):
+        return RedirectResponse(url=f"/appeals/{appeal_id}", status_code=302)
+
     result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
     item = result.scalar_one_or_none()
     if not item:
@@ -262,6 +269,9 @@ async def update_appeal(
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
 ):
+    if not can_edit_disputes(current_user):
+        return RedirectResponse(url=f"/appeals/{appeal_id}", status_code=302)
+
     result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
     item = result.scalar_one_or_none()
     if not item:

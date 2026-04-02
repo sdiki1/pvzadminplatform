@@ -28,7 +28,7 @@ from app.services.email import EmailService
 from app.services.payroll import PayrollService
 from app.services.reports import ReportService
 from app.utils.parsing import normalize_text
-from app.web.deps import get_db, require_manager
+from app.web.deps import get_db, is_restricted_manager, require_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -526,6 +526,10 @@ async def view_payroll_run(
     repo = PayrollRepo(db)
     items = await repo.list_run_items(run_id)
 
+    # manager: only own payroll item
+    if is_restricted_manager(current_user) and current_user.user_id:
+        items = [i for i in items if i.user_id == current_user.user_id]
+
     user_repo = UserRepo(db)
     users = await user_repo.list_all()
     users_map = {u.id: u for u in users}
@@ -561,6 +565,10 @@ async def view_employee_sheet(
     result = await db.execute(select(PayrollItem).where(PayrollItem.id == item_id, PayrollItem.run_id == run_id))
     item = result.scalar_one_or_none()
     if not item:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+
+    # manager: block access to other employees' sheets
+    if is_restricted_manager(current_user) and current_user.user_id and item.user_id != current_user.user_id:
         return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
 
     result = await db.execute(select(User).where(User.id == item.user_id))

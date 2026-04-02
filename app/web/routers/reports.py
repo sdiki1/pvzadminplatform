@@ -18,7 +18,10 @@ from app.db.models import (
     WebUser,
 )
 from app.utils.parsing import parse_date
-from app.web.deps import get_current_user, get_db
+from app.db.models import WebRoleEnum
+from app.web.deps import RequireRole, get_current_user, get_db
+
+require_reports = RequireRole(WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN, WebRoleEnum.SENIOR)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -30,7 +33,7 @@ router = APIRouter(prefix="/reports", tags=["reports"])
 async def reports_index(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: WebUser = Depends(get_current_user),
+    current_user: WebUser = Depends(require_reports),
     date_from: str = "",
     date_to: str = "",
     point_id: int = 0,

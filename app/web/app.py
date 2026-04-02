@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
     from app.web.routers.profile import router as profile_router
     from app.web.routers.reception import router as reception_router
     from app.web.routers.my import router as my_router
+    from app.web.routers.tardiness import router as tardiness_router
 
     app.include_router(dashboard_router)
     app.include_router(points_router)
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(profile_router)
     app.include_router(reception_router)
     app.include_router(my_router)
+    app.include_router(tardiness_router)
 
     @app.exception_handler(401)
     async def unauthorized_handler(request: Request, exc):

@@ -29,6 +29,10 @@
             </a>
             {% endif %}
 
+            {% set _roles = current_user.roles if current_user else [] %}
+            {% set _is_manager_only = ('manager' in _roles and 'senior' not in _roles and 'admin' not in _roles and 'superadmin' not in _roles) %}
+
+            {% if not _is_manager_only %}
             <div class="nav-section">Справочники</div>
             <a href="/points" class="nav-link {% if active_page == 'points' %}active{% endif %}">
                 <i class="bi bi-geo-alt"></i> Точки
@@ -39,20 +43,29 @@
             <a href="/marketplaces" class="nav-link {% if active_page == 'marketplaces' %}active{% endif %}">
                 <i class="bi bi-shop"></i> Маркетплейсы
             </a>
+            {% endif %}
+
+            {% set _can_appeals = ('manager' in _roles or 'senior' in _roles or 'disputes' in _roles or 'admin' in _roles or 'superadmin' in _roles) %}
+            {% set _can_defects = _can_appeals %}
+            {% set _can_ops = (_can_appeals or 'employee' in _roles) %}
 
             <div class="nav-section">Операции</div>
             <a href="/shifts" class="nav-link {% if active_page == 'shifts' %}active{% endif %}">
                 <i class="bi bi-calendar3"></i> График
             </a>
+            {% if _can_appeals %}
             <a href="/appeals" class="nav-link {% if active_page == 'appeals' %}active{% endif %}">
                 <i class="bi bi-shield-check"></i> Оспаривания
             </a>
+            {% endif %}
             <a href="/reception" class="nav-link {% if active_page == 'reception' %}active{% endif %}">
-                <i class="bi bi-table"></i> Приёмка
+                <i class="bi bi-table"></i> Приёмка{% if _is_manager_only %} <span class="badge bg-secondary ms-1" style="font-size:9px">чтение</span>{% endif %}
             </a>
+            {% if _can_defects %}
             <a href="/defects" class="nav-link {% if active_page == 'defects' %}active{% endif %}">
                 <i class="bi bi-exclamation-triangle"></i> Брак
             </a>
+            {% endif %}
             <a href="/sos" class="nav-link {% if active_page == 'sos' %}active{% endif %}">
                 <i class="bi bi-bell"></i> SOS
             </a>
@@ -75,14 +88,25 @@
             <a href="/adjustments" class="nav-link {% if active_page == 'adjustments' %}active{% endif %}">
                 <i class="bi bi-pencil-square"></i> Корректировки
             </a>
+            <a href="/tardiness" class="nav-link {% if active_page == 'tardiness' %}active{% endif %}">
+                <i class="bi bi-clock-history"></i> Опоздания
+            </a>
 
+            {% set _can_marketing = ('superadmin' in _roles or 'admin' in _roles or 'senior' in _roles or 'marketing' in _roles) %}
+            {% set _can_reports = ('superadmin' in _roles or 'admin' in _roles or 'senior' in _roles) %}
+            {% if _can_marketing or _can_reports %}
             <div class="nav-section">Управление</div>
+            {% if _can_marketing %}
             <a href="/marketing" class="nav-link {% if active_page == 'marketing' %}active{% endif %}">
                 <i class="bi bi-megaphone"></i> Маркетинг
             </a>
+            {% endif %}
+            {% if _can_reports %}
             <a href="/reports" class="nav-link {% if active_page == 'reports' %}active{% endif %}">
                 <i class="bi bi-file-earmark-bar-graph"></i> Отчёты
             </a>
+            {% endif %}
+            {% endif %}
 
             {% if current_user and ('superadmin' in current_user.roles or 'admin' in current_user.roles) %}
             <div class="nav-section">Администрирование</div>

@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import MarketingSurvey, WebUser
 from app.utils.parsing import parse_date
-from app.web.deps import get_current_user, get_db
+from app.db.models import WebRoleEnum
+from app.web.deps import RequireRole, get_current_user, get_db
+
+require_marketing = RequireRole(
+    WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN, WebRoleEnum.SENIOR, WebRoleEnum.MARKETING
+)
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -23,7 +28,7 @@ router = APIRouter(prefix="/marketing", tags=["marketing"])
 async def list_surveys(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: WebUser = Depends(get_current_user),
+    current_user: WebUser = Depends(require_marketing),
     search: str = "",
     date_from: str = "",
     date_to: str = "",
@@ -66,7 +71,7 @@ async def list_surveys(
 @router.get("/new", response_class=HTMLResponse)
 async def new_survey(
     request: Request,
-    current_user: WebUser = Depends(get_current_user),
+    current_user: WebUser = Depends(require_marketing),
 ):
     return templates.TemplateResponse(request, "marketing/form.html", {"current_user": current_user,
         "active_page": "marketing",
@@ -78,7 +83,7 @@ async def new_survey(
 async def create_survey(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: WebUser = Depends(get_current_user),
+    current_user: WebUser = Depends(require_marketing),
 ):
     form = await request.form()
     survey_date = parse_date(form.get("survey_date")) or date.today()

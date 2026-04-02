@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import DefectIncident, Point, User, WebUser
 from app.utils.parsing import parse_date
-from app.web.deps import get_current_user, get_db
+from app.web.deps import can_edit_disputes, get_current_user, get_db, is_restricted_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -84,6 +84,10 @@ async def list_defects(
     query = select(DefectIncident)
     parsed_date_from = parse_date(date_from) if date_from else None
     parsed_date_to = parse_date(date_to) if date_to else None
+
+    # manager: only own defects
+    if is_restricted_manager(current_user) and current_user.user_id:
+        query = query.where(DefectIncident.recorded_by_employee_id == current_user.user_id)
 
     if point_id:
         query = query.where(DefectIncident.point_id == point_id)
@@ -187,7 +191,10 @@ async def create_defect(
         action_comment=form.get("action_comment", "").strip() or None,
         amount=amount,
         status=form.get("status", "new"),
-        recorded_by_employee_id=int(form["recorded_by_employee_id"]) if form.get("recorded_by_employee_id") else None,
+        recorded_by_employee_id=(
+            current_user.user_id if is_restricted_manager(current_user)
+            else (int(form["recorded_by_employee_id"]) if form.get("recorded_by_employee_id") else None)
+        ),
         created_by_user_id=current_user.id,
     )
     db.add(incident)
@@ -232,6 +239,9 @@ async def edit_defect(
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
 ):
+    if not can_edit_disputes(current_user):
+        return RedirectResponse(url=f"/defects/{defect_id}", status_code=302)
+
     result = await db.execute(select(DefectIncident).where(DefectIncident.id == defect_id))
     item = result.scalar_one_or_none()
     if not item:
@@ -263,6 +273,9 @@ async def update_defect(
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
 ):
+    if not can_edit_disputes(current_user):
+        return RedirectResponse(url=f"/defects/{defect_id}", status_code=302)
+
     result = await db.execute(select(DefectIncident).where(DefectIncident.id == defect_id))
     item = result.scalar_one_or_none()
     if not item:

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Point, ReceptionStat, WebUser
-from app.web.deps import get_current_user, get_db
+from app.web.deps import get_current_user, get_db, is_restricted_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -108,6 +108,9 @@ async def save_cell(
     current_user: WebUser = Depends(get_current_user),
 ):
     """AJAX endpoint: save a single cell value."""
+    if is_restricted_manager(current_user):
+        return JSONResponse({"error": "permission denied"}, status_code=403)
+
     data = await request.json()
     point_id = int(data.get("point_id", 0))
     field = str(data.get("field", ""))

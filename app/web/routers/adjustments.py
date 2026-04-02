@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AdjustmentType, ManualAdjustment, User
-from app.web.deps import get_current_user, get_db, require_manager
+from app.web.deps import get_current_user, get_db, is_restricted_manager, require_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -37,8 +37,12 @@ async def list_adjustments(
     per_page = 25
     query = select(ManualAdjustment)
 
-    if employee_id:
+    # manager: only own adjustments
+    if is_restricted_manager(current_user) and current_user.user_id:
+        query = query.where(ManualAdjustment.user_id == current_user.user_id)
+    elif employee_id:
         query = query.where(ManualAdjustment.user_id == int(employee_id))
+
     if adj_type:
         query = query.where(ManualAdjustment.adjustment_type == adj_type)
 

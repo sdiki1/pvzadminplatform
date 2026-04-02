@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import EmployeePointAssignment, PlannedShift, Point, Shift, User, WebUser
 from app.utils.parsing import parse_date
-from app.web.deps import get_current_user, get_db
+from app.web.deps import get_current_user, get_db, is_restricted_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -19,7 +19,7 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 router = APIRouter(prefix="/shifts", tags=["shifts"])
 
 
-MANAGER_ROLES = {"superadmin", "admin", "manager", "senior"}
+MANAGER_ROLES = {"superadmin", "admin", "senior"}
 
 
 def _can_manage_all_schedule(current_user: WebUser) -> bool:
@@ -27,7 +27,8 @@ def _can_manage_all_schedule(current_user: WebUser) -> bool:
 
 
 def _can_manage_own_schedule(current_user: WebUser) -> bool:
-    return bool(current_user.user_id and "employee" in current_user.roles)
+    # managers and employees with a linked employee account can edit their own schedule
+    return bool(current_user.user_id and set(current_user.roles).intersection({"employee", "manager"}))
 
 
 def _can_manage_user_schedule(current_user: WebUser, user_id: int) -> bool:

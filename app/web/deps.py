@@ -73,3 +73,23 @@ require_admin = RequireRole(WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN)
 require_manager = RequireRole(
     WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN, WebRoleEnum.MANAGER, WebRoleEnum.SENIOR
 )
+require_senior = RequireRole(
+    WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN, WebRoleEnum.SENIOR
+)
+require_disputes = RequireRole(
+    WebRoleEnum.SUPERADMIN, WebRoleEnum.ADMIN, WebRoleEnum.SENIOR, WebRoleEnum.DISPUTES
+)
+
+_ELEVATED_ROLES = {"superadmin", "admin", "senior"}
+
+
+def is_restricted_manager(user: WebUser) -> bool:
+    """True if user ONLY has manager role (not senior/admin/superadmin).
+    These users get filtered views — only their own records."""
+    roles = set(user.roles)
+    return "manager" in roles and not roles.intersection(_ELEVATED_ROLES)
+
+
+def can_edit_disputes(user: WebUser) -> bool:
+    """True if user may create/edit all appeals and defects."""
+    return bool(set(user.roles).intersection(_ELEVATED_ROLES | {"disputes"}))

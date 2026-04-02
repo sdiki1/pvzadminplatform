@@ -76,6 +76,11 @@ from app.db.models.marketing import (
     MarketingSurvey,
 )
 
+# Tardiness models
+from app.db.models.tardiness import (
+    TardinessRecord,
+)
+
 # Common models (attachments, comments, notifications, imports)
 from app.db.models.common import (
     Attachment,
@@ -137,6 +142,8 @@ __all__ = [
     "AppealFeedback",
     # Marketing
     "MarketingSurvey",
+    # Tardiness
+    "TardinessRecord",
     # Common
     "Attachment",
     "Comment",
