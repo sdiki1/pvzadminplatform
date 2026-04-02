@@ -4,6 +4,7 @@
 {% block extra_css %}
 <style>
     .payslip { max-width: 700px; margin: 0 auto; }
+    .payslip-full { max-width: 1200px; }
     .payslip-header { border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 16px; }
     .payslip-table td { padding: 8px 12px; }
     .payslip-table .label { color: #666; }
@@ -18,15 +19,38 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 no-print">
-    <a href="/payroll/{{ run.id }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left"></i> К ведомости
-    </a>
-    <button onclick="window.print()" class="btn btn-outline-primary">
-        <i class="bi bi-printer"></i> Печать
-    </button>
+    <div class="d-flex align-items-center gap-2">
+        <a href="/payroll/{{ run.id }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> К ведомости
+        </a>
+        <div class="btn-group">
+            <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=short"
+               class="btn btn-sm {% if view_mode == 'short' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                Краткая сводка
+            </a>
+            <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=full"
+               class="btn btn-sm {% if view_mode == 'full' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                Полная версия
+            </a>
+        </div>
+    </div>
+    <div class="d-flex gap-2">
+        {% if view_mode == 'short' %}
+        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=full" class="btn btn-outline-primary">
+            <i class="bi bi-arrows-expand"></i> Развернуть
+        </a>
+        {% else %}
+        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=short" class="btn btn-outline-primary">
+            <i class="bi bi-arrows-collapse"></i> Свернуть
+        </a>
+        {% endif %}
+        <button onclick="window.print()" class="btn btn-outline-primary">
+            <i class="bi bi-printer"></i> Печать
+        </button>
+    </div>
 </div>
 
-<div class="payslip">
+<div class="payslip{% if view_mode == 'full' %} payslip-full{% endif %}">
     <div class="payslip-header">
         <h4>Расчётный лист</h4>
         <p class="text-muted mb-1">
@@ -130,6 +154,249 @@
             </tr>
         </tbody>
     </table>
+
+    {% if view_mode == 'full' %}
+    <div class="mt-4">
+        <h5 class="mb-3">Полная детализация</h5>
+
+        <h6 class="mt-3">1. Смены и стоимость каждой смены</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>ПВЗ</th>
+                        <th class="text-end">Часы</th>
+                        <th>Формула</th>
+                        <th class="text-end">Стоимость</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in shift_rows %}
+                    <tr>
+                        <td>
+                            {{ row.shift_date.strftime('%d.%m.%Y') }}
+                            {% if row.is_substitution %}
+                            <span class="badge text-bg-info">подмена</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ row.point_name }}</td>
+                        <td class="text-end">{{ "%.2f"|format(row.hours|float) }}</td>
+                        <td>
+                            {{ row.basis }}:
+                            <span class="text-muted">{{ row.formula }}</span>
+                        </td>
+                        <td class="text-end fw-semibold">{{ "%.2f"|format(row.amount_rub|float) }} ₽</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">Нет оплачиваемых смен в периоде</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="4" class="text-end">Итого по сменам:</th>
+                        <th class="text-end">{{ "%.2f"|format(shift_amount_total|float) }} ₽</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <h6 class="mt-4">2. Резервные дежурства (+{{ reserve_duty_bonus_rub }} ₽)</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>ПВЗ</th>
+                        <th class="text-end">Начисление</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in reserve_rows %}
+                    <tr>
+                        <td>{{ row.shift_date.strftime('%d.%m.%Y') }}</td>
+                        <td>{{ row.point_name }}</td>
+                        <td class="text-end">{{ "%.2f"|format(row.amount_rub|float) }} ₽</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">Нет резервных дежурств</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="2" class="text-end">Итого резерв:</th>
+                        <th class="text-end">{{ "%.2f"|format(reserve_amount_total|float) }} ₽</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <h6 class="mt-4">3. Резервные выходы (подмена, +{{ substitution_bonus_rub }} ₽)</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>ПВЗ</th>
+                        <th class="text-end">Начисление</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in substitution_rows %}
+                    <tr>
+                        <td>{{ row.shift_date.strftime('%d.%m.%Y') }}</td>
+                        <td>{{ row.point_name }}</td>
+                        <td class="text-end">{{ "%.2f"|format(row.amount_rub|float) }} ₽</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">Нет подтверждённых подменных выходов</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="2" class="text-end">Итого подмена:</th>
+                        <th class="text-end">{{ "%.2f"|format(substitution_amount_total|float) }} ₽</th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        {% if substitution_unpaid_rows %}
+        <div class="alert alert-warning small">
+            <strong>План подмены без оплаченного выхода:</strong>
+            {% for row in substitution_unpaid_rows %}
+                {{ row.shift_date.strftime('%d.%m.%Y') }} ({{ row.point_name }}){% if not loop.last %}, {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <h6 class="mt-4">4. Списания из оспариваний (с деталями)</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Дата</th>
+                        <th>ПВЗ</th>
+                        <th>Тип</th>
+                        <th class="text-end">Сумма</th>
+                        <th>ШК</th>
+                        <th>Тикет</th>
+                        <th>Статус</th>
+                        <th>Описание</th>
+                        <th>Ссылка</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in appeal_rows %}
+                    <tr>
+                        <td>{{ row.case_date.strftime('%d.%m.%Y') }}</td>
+                        <td>{{ row.point_name }}</td>
+                        <td>{{ row.type_label }}</td>
+                        <td class="text-end text-danger">-{{ "%.2f"|format(row.amount_rub|float) }} ₽</td>
+                        <td>{{ row.barcode or '—' }}</td>
+                        <td>{{ row.ticket_number or '—' }}</td>
+                        <td>{{ row.status_label }}</td>
+                        <td>{{ row.description or '—' }}</td>
+                        <td>
+                            <a href="/appeals/{{ row.id }}" target="_blank" rel="noopener noreferrer">Оспаривание #{{ row.id }}</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted">Нет списаний по оспариваниям в периоде</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="row g-2 mb-3">
+            <div class="col-md-3">
+                <div class="p-2 border rounded">
+                    <div class="small text-muted">Зависшие товары</div>
+                    <div class="fw-semibold text-danger">-{{ "%.2f"|format(appeal_totals["stuck"]|float) }} ₽</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="p-2 border rounded">
+                    <div class="small text-muted">Подмена товара</div>
+                    <div class="fw-semibold text-danger">-{{ "%.2f"|format(appeal_totals["substitution"]|float) }} ₽</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="p-2 border rounded">
+                    <div class="small text-muted">Брак товара</div>
+                    <div class="fw-semibold text-danger">-{{ "%.2f"|format(appeal_totals["defect"]|float) }} ₽</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="p-2 border rounded">
+                    <div class="small text-muted">Прочие списания</div>
+                    <div class="fw-semibold text-danger">-{{ "%.2f"|format(appeal_totals["other"]|float) }} ₽</div>
+                </div>
+            </div>
+        </div>
+
+        {% if appeal_gap != 0 %}
+        <div class="alert alert-secondary small">
+            В удержаниях есть разница {{ "%.2f"|format(appeal_gap|float) }} ₽ между суммой из оспариваний и итоговым полем удержаний.
+            Обычно это означает, что часть списаний пришла из старых записей (без карточки оспаривания).
+        </div>
+        {% endif %}
+
+        <h6 class="mt-4">5. Премия за выдачу (детали)</h6>
+        <div class="table-responsive mb-3">
+            <table class="table table-sm table-bordered">
+                <tbody>
+                    <tr>
+                        <td>Количество выданных товаров (из данных расчёта)</td>
+                        <td class="text-end">{{ details.get("issued_items", "0") }}</td>
+                    </tr>
+                    <tr>
+                        <td>Автоматическая премия за выдачу</td>
+                        <td class="text-end">{{ details.get("issued_bonus_auto_rub", "0.00") }} ₽</td>
+                    </tr>
+                    <tr>
+                        <td>Итоговая премия за выдачу (в ведомости)</td>
+                        <td class="text-end">{{ "%.2f"|format(item.issued_bonus_rub|float) }} ₽</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h6 class="mt-4">6. Премия/удержание руководства (детали)</h6>
+        <div class="table-responsive mb-2">
+            <table class="table table-sm table-bordered">
+                <thead>
+                    <tr>
+                        <th>Тип</th>
+                        <th>Комментарий</th>
+                        <th class="text-end">Сумма</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in adjustment_rows %}
+                    <tr>
+                        <td>{{ row.adjustment_type }}</td>
+                        <td>{{ row.comment or '—' }}</td>
+                        <td class="text-end">{{ "%.2f"|format(row.amount_rub|float) }} ₽</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">Нет ручных корректировок за период</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <p class="text-muted small mt-4">
         Сформировано: {{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}
