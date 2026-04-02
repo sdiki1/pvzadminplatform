@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_, select
@@ -85,6 +85,227 @@ def _appeal_short_description(appeal: Appeal) -> str:
         if text and text.strip():
             return text.strip()
     return ""
+
+
+async def _build_employee_sheet_data(
+    db: AsyncSession,
+    run: PayrollRun,
+    item,
+    employee: User | None,
+    settings,
+) -> dict:
+    details: dict = {}
+    if item.details_json:
+        try:
+            details = json.loads(item.details_json)
+        except Exception:
+            details = {}
+
+    points_result = await db.execute(select(Point))
+    points_map = {p.id: p for p in points_result.scalars().all()}
+
+    shift_rows: list[dict] = []
+    shift_amount_total = Decimal("0.00")
+    reserve_rows: list[dict] = []
+    substitution_rows: list[dict] = []
+    substitution_unpaid_rows: list[dict] = []
+    appeal_rows: list[dict] = []
+    adjustment_rows: list[dict] = []
+
+    appeal_totals = {
+        "stuck": Decimal("0.00"),
+        "substitution": Decimal("0.00"),
+        "defect": Decimal("0.00"),
+        "other": Decimal("0.00"),
+    }
+
+    if employee:
+        service = PayrollService(db, settings)
+
+        planned_result = await db.execute(
+            select(PlannedShift)
+            .where(
+                PlannedShift.user_id == employee.id,
+                PlannedShift.shift_date >= run.period_start,
+                PlannedShift.shift_date <= run.period_end,
+            )
+            .order_by(PlannedShift.shift_date, PlannedShift.id)
+        )
+        planned_shifts = planned_result.scalars().all()
+        substitution_plan_keys: set[tuple[date, int]] = set()
+        paid_substitution_keys: set[tuple[date, int]] = set()
+
+        for planned in planned_shifts:
+            point = points_map.get(planned.point_id)
+            point_name = point.name if point else f"ПВЗ #{planned.point_id}"
+            if planned.is_reserve:
+                reserve_rows.append({
+                    "shift_date": planned.shift_date,
+                    "point_name": point_name,
+                    "amount_rub": Decimal(settings.reserve_duty_bonus_rub),
+                })
+            if planned.is_substitution:
+                substitution_plan_keys.add((planned.shift_date, planned.point_id))
+
+        shifts_result = await db.execute(
+            select(Shift)
+            .where(
+                Shift.user_id == employee.id,
+                Shift.state == ShiftState.CLOSED,
+                Shift.shift_date >= run.period_start,
+                Shift.shift_date <= run.period_end,
+                Shift.open_approval_status == ApprovalStatus.APPROVED,
+                or_(Shift.close_approval_status.is_(None), Shift.close_approval_status == ApprovalStatus.APPROVED),
+            )
+            .order_by(Shift.shift_date, Shift.opened_at)
+        )
+        shifts = shifts_result.scalars().all()
+
+        shift_rate = _to_decimal(employee.shift_rate_rub)
+        hourly_rate = _to_decimal(employee.hourly_rate_rub)
+
+        for shift in shifts:
+            point = points_map.get(shift.point_id)
+            point_name = point.name if point else f"ПВЗ #{shift.point_id}"
+            hours = (Decimal(shift.duration_minutes or 0) / Decimal("60")).quantize(Decimal("0.01"))
+            is_ozon = bool(point and point.brand.value == "ozon")
+
+            if hourly_rate > 0 and hours > 0 and hours < Decimal("8"):
+                basis = "Почасовая часть"
+                rate = hourly_rate
+                formula = f"{hourly_rate:.2f} ₽ × {hours:.2f} ч"
+            elif shift_rate > 0:
+                basis = "Ставка за смену"
+                rate = shift_rate
+                formula = f"{shift_rate:.2f} ₽ за смену"
+            elif is_ozon:
+                basis = "Фикс OZON"
+                rate = Decimal("1900.00")
+                formula = "1900.00 ₽ за смену"
+            else:
+                basis = "Почасовая часть"
+                rate = hourly_rate
+                formula = f"{hourly_rate:.2f} ₽ × {hours:.2f} ч"
+
+            amount = service._money_round(service._calc_shift_base(shift, employee, point))
+            shift_amount_total += amount
+
+            is_substitution = (shift.shift_date, shift.point_id) in substitution_plan_keys
+            if is_substitution:
+                paid_substitution_keys.add((shift.shift_date, shift.point_id))
+                substitution_rows.append({
+                    "shift_date": shift.shift_date,
+                    "point_name": point_name,
+                    "amount_rub": Decimal(settings.substitution_bonus_rub),
+                })
+
+            shift_rows.append({
+                "shift_date": shift.shift_date,
+                "point_name": point_name,
+                "hours": hours,
+                "basis": basis,
+                "rate_rub": rate,
+                "formula": formula,
+                "amount_rub": amount,
+                "is_substitution": is_substitution,
+            })
+
+        for shift_date, point_id in sorted(substitution_plan_keys):
+            if (shift_date, point_id) in paid_substitution_keys:
+                continue
+            point = points_map.get(point_id)
+            point_name = point.name if point else f"ПВЗ #{point_id}"
+            substitution_unpaid_rows.append({
+                "shift_date": shift_date,
+                "point_name": point_name,
+            })
+
+        user_id_by_last_name: dict[str, int] = {}
+        if employee.last_name:
+            user_id_by_last_name[normalize_text(employee.last_name)] = employee.id
+
+        appeals_result = await db.execute(
+            select(Appeal)
+            .where(
+                Appeal.case_date >= run.period_start,
+                Appeal.case_date <= run.period_end,
+            )
+            .order_by(Appeal.case_date, Appeal.id)
+        )
+        appeals = appeals_result.scalars().all()
+
+        for appeal in appeals:
+            matched_user_id = appeal.assigned_manager_employee_id or PayrollService._match_user_id_from_name(
+                appeal.assigned_manager_raw,
+                user_id_by_last_name,
+            )
+            if matched_user_id != employee.id:
+                continue
+            if not PayrollService._is_appeal_deduction(appeal):
+                continue
+
+            amount = abs(_to_decimal(appeal.amount))
+            if amount <= 0:
+                continue
+
+            type_key = _appeal_type_key(appeal.appeal_type)
+            appeal_totals[type_key] += amount
+
+            point = points_map.get(appeal.point_id)
+            point_name = point.name if point else f"ПВЗ #{appeal.point_id}"
+            status_label = APPEAL_STATUS_LABELS.get(appeal.status, appeal.status)
+
+            appeal_rows.append({
+                "id": appeal.id,
+                "case_date": appeal.case_date,
+                "point_name": point_name,
+                "type_key": type_key,
+                "type_label": APPEAL_TYPE_LABELS.get(type_key, APPEAL_TYPE_LABELS["other"]),
+                "amount_rub": amount,
+                "barcode": appeal.barcode or "",
+                "ticket_number": appeal.ticket_number or "",
+                "status_label": status_label,
+                "description": _appeal_short_description(appeal),
+            })
+
+        adjustments_result = await db.execute(
+            select(ManualAdjustment)
+            .where(
+                ManualAdjustment.user_id == employee.id,
+                ManualAdjustment.period_start == run.period_start,
+                ManualAdjustment.period_end == run.period_end,
+            )
+            .order_by(ManualAdjustment.id)
+        )
+        for adj in adjustments_result.scalars().all():
+            adjustment_rows.append({
+                "amount_rub": adj.amount_rub,
+                "adjustment_type": adj.adjustment_type.value,
+                "comment": adj.comment or "",
+                "created_at": adj.created_at,
+            })
+
+    reserve_amount_total = sum((r["amount_rub"] for r in reserve_rows), start=Decimal("0.00"))
+    substitution_amount_total = sum((r["amount_rub"] for r in substitution_rows), start=Decimal("0.00"))
+    appeal_amount_total = sum(appeal_totals.values(), start=Decimal("0.00"))
+    appeal_gap = (Decimal(item.dispute_deduction_rub or 0) - appeal_amount_total).quantize(Decimal("0.01"))
+    if abs(appeal_gap) < Decimal("0.01"):
+        appeal_gap = Decimal("0.00")
+
+    return {
+        "details": details,
+        "shift_rows": shift_rows,
+        "shift_amount_total": shift_amount_total,
+        "reserve_rows": reserve_rows,
+        "reserve_amount_total": reserve_amount_total,
+        "substitution_rows": substitution_rows,
+        "substitution_amount_total": substitution_amount_total,
+        "substitution_unpaid_rows": substitution_unpaid_rows,
+        "appeal_rows": appeal_rows,
+        "appeal_totals": appeal_totals,
+        "appeal_gap": appeal_gap,
+        "adjustment_rows": adjustment_rows,
+    }
 
 
 def _safe_payout_day(value: object, default: int = 10) -> int:
@@ -347,204 +568,7 @@ async def view_employee_sheet(
 
     view_mode = "full" if view == "full" else "short"
     settings = get_settings()
-
-    details: dict = {}
-    if item.details_json:
-        try:
-            details = json.loads(item.details_json)
-        except Exception:
-            details = {}
-
-    points_result = await db.execute(select(Point))
-    points_map = {p.id: p for p in points_result.scalars().all()}
-
-    shift_rows: list[dict] = []
-    shift_amount_total = Decimal("0.00")
-    reserve_rows: list[dict] = []
-    substitution_rows: list[dict] = []
-    substitution_unpaid_rows: list[dict] = []
-    appeal_rows: list[dict] = []
-    adjustment_rows: list[dict] = []
-
-    appeal_totals = {
-        "stuck": Decimal("0.00"),
-        "substitution": Decimal("0.00"),
-        "defect": Decimal("0.00"),
-        "other": Decimal("0.00"),
-    }
-
-    if employee:
-        service = PayrollService(db, settings)
-
-        planned_result = await db.execute(
-            select(PlannedShift)
-            .where(
-                PlannedShift.user_id == employee.id,
-                PlannedShift.shift_date >= run.period_start,
-                PlannedShift.shift_date <= run.period_end,
-            )
-            .order_by(PlannedShift.shift_date, PlannedShift.id)
-        )
-        planned_shifts = planned_result.scalars().all()
-        substitution_plan_keys: set[tuple[date, int]] = set()
-        paid_substitution_keys: set[tuple[date, int]] = set()
-
-        for planned in planned_shifts:
-            point = points_map.get(planned.point_id)
-            point_name = point.name if point else f"ПВЗ #{planned.point_id}"
-            if planned.is_reserve:
-                reserve_rows.append({
-                    "shift_date": planned.shift_date,
-                    "point_name": point_name,
-                    "amount_rub": Decimal(settings.reserve_duty_bonus_rub),
-                })
-            if planned.is_substitution:
-                substitution_plan_keys.add((planned.shift_date, planned.point_id))
-
-        shifts_result = await db.execute(
-            select(Shift)
-            .where(
-                Shift.user_id == employee.id,
-                Shift.state == ShiftState.CLOSED,
-                Shift.shift_date >= run.period_start,
-                Shift.shift_date <= run.period_end,
-                Shift.open_approval_status == ApprovalStatus.APPROVED,
-                or_(Shift.close_approval_status.is_(None), Shift.close_approval_status == ApprovalStatus.APPROVED),
-            )
-            .order_by(Shift.shift_date, Shift.opened_at)
-        )
-        shifts = shifts_result.scalars().all()
-
-        shift_rate = _to_decimal(employee.shift_rate_rub)
-        hourly_rate = _to_decimal(employee.hourly_rate_rub)
-
-        for shift in shifts:
-            point = points_map.get(shift.point_id)
-            point_name = point.name if point else f"ПВЗ #{shift.point_id}"
-            hours = (Decimal(shift.duration_minutes or 0) / Decimal("60")).quantize(Decimal("0.01"))
-            is_ozon = bool(point and point.brand.value == "ozon")
-
-            if hourly_rate > 0 and hours > 0 and hours < Decimal("8"):
-                basis = "Почасовая часть"
-                rate = hourly_rate
-                formula = f"{hourly_rate:.2f} ₽ × {hours:.2f} ч"
-            elif shift_rate > 0:
-                basis = "Ставка за смену"
-                rate = shift_rate
-                formula = f"{shift_rate:.2f} ₽ за смену"
-            elif is_ozon:
-                basis = "Фикс OZON"
-                rate = Decimal("1900.00")
-                formula = "1900.00 ₽ за смену"
-            else:
-                basis = "Почасовая часть"
-                rate = hourly_rate
-                formula = f"{hourly_rate:.2f} ₽ × {hours:.2f} ч"
-
-            amount = service._money_round(service._calc_shift_base(shift, employee, point))
-            shift_amount_total += amount
-
-            is_substitution = (shift.shift_date, shift.point_id) in substitution_plan_keys
-            if is_substitution:
-                paid_substitution_keys.add((shift.shift_date, shift.point_id))
-                substitution_rows.append({
-                    "shift_date": shift.shift_date,
-                    "point_name": point_name,
-                    "amount_rub": Decimal(settings.substitution_bonus_rub),
-                })
-
-            shift_rows.append({
-                "shift_date": shift.shift_date,
-                "point_name": point_name,
-                "hours": hours,
-                "basis": basis,
-                "rate_rub": rate,
-                "formula": formula,
-                "amount_rub": amount,
-                "is_substitution": is_substitution,
-            })
-
-        for shift_date, point_id in sorted(substitution_plan_keys):
-            if (shift_date, point_id) in paid_substitution_keys:
-                continue
-            point = points_map.get(point_id)
-            point_name = point.name if point else f"ПВЗ #{point_id}"
-            substitution_unpaid_rows.append({
-                "shift_date": shift_date,
-                "point_name": point_name,
-            })
-
-        user_id_by_last_name: dict[str, int] = {}
-        if employee.last_name:
-            user_id_by_last_name[normalize_text(employee.last_name)] = employee.id
-
-        appeals_result = await db.execute(
-            select(Appeal)
-            .where(
-                Appeal.case_date >= run.period_start,
-                Appeal.case_date <= run.period_end,
-            )
-            .order_by(Appeal.case_date, Appeal.id)
-        )
-        appeals = appeals_result.scalars().all()
-
-        for appeal in appeals:
-            matched_user_id = appeal.assigned_manager_employee_id or PayrollService._match_user_id_from_name(
-                appeal.assigned_manager_raw,
-                user_id_by_last_name,
-            )
-            if matched_user_id != employee.id:
-                continue
-            if not PayrollService._is_appeal_deduction(appeal):
-                continue
-
-            amount = abs(_to_decimal(appeal.amount))
-            if amount <= 0:
-                continue
-
-            type_key = _appeal_type_key(appeal.appeal_type)
-            appeal_totals[type_key] += amount
-
-            point = points_map.get(appeal.point_id)
-            point_name = point.name if point else f"ПВЗ #{appeal.point_id}"
-            status_label = APPEAL_STATUS_LABELS.get(appeal.status, appeal.status)
-
-            appeal_rows.append({
-                "id": appeal.id,
-                "case_date": appeal.case_date,
-                "point_name": point_name,
-                "type_key": type_key,
-                "type_label": APPEAL_TYPE_LABELS.get(type_key, APPEAL_TYPE_LABELS["other"]),
-                "amount_rub": amount,
-                "barcode": appeal.barcode or "",
-                "ticket_number": appeal.ticket_number or "",
-                "status_label": status_label,
-                "description": _appeal_short_description(appeal),
-            })
-
-        adjustments_result = await db.execute(
-            select(ManualAdjustment)
-            .where(
-                ManualAdjustment.user_id == employee.id,
-                ManualAdjustment.period_start == run.period_start,
-                ManualAdjustment.period_end == run.period_end,
-            )
-            .order_by(ManualAdjustment.id)
-        )
-        for adj in adjustments_result.scalars().all():
-            adjustment_rows.append({
-                "amount_rub": adj.amount_rub,
-                "adjustment_type": adj.adjustment_type.value,
-                "comment": adj.comment or "",
-                "created_at": adj.created_at,
-            })
-
-    reserve_amount_total = sum((r["amount_rub"] for r in reserve_rows), start=Decimal("0.00"))
-    substitution_amount_total = sum((r["amount_rub"] for r in substitution_rows), start=Decimal("0.00"))
-    appeal_amount_total = sum(appeal_totals.values(), start=Decimal("0.00"))
-    appeal_gap = (Decimal(item.dispute_deduction_rub or 0) - appeal_amount_total).quantize(Decimal("0.01"))
-    if abs(appeal_gap) < Decimal("0.01"):
-        appeal_gap = Decimal("0.00")
+    details_data = await _build_employee_sheet_data(db=db, run=run, item=item, employee=employee, settings=settings)
 
     return templates.TemplateResponse(request, "payroll/sheet.html", {
         "current_user": current_user,
@@ -553,22 +577,124 @@ async def view_employee_sheet(
         "item": item,
         "employee": employee,
         "view_mode": view_mode,
-        "details": details,
-        "shift_rows": shift_rows,
-        "shift_amount_total": shift_amount_total,
-        "reserve_rows": reserve_rows,
-        "reserve_amount_total": reserve_amount_total,
-        "substitution_rows": substitution_rows,
-        "substitution_amount_total": substitution_amount_total,
-        "substitution_unpaid_rows": substitution_unpaid_rows,
-        "appeal_rows": appeal_rows,
-        "appeal_totals": appeal_totals,
-        "appeal_gap": appeal_gap,
-        "adjustment_rows": adjustment_rows,
+        **details_data,
         "manager_bonus_3_per_ticket": settings.manager_bonus_3_per_ticket,
         "reserve_duty_bonus_rub": settings.reserve_duty_bonus_rub,
         "substitution_bonus_rub": settings.substitution_bonus_rub,
     })
+
+
+@router.get("/{run_id}/sheet/{item_id}/export.xlsx")
+async def export_employee_sheet_xlsx(
+    run_id: int,
+    item_id: int,
+    view: str = "short",
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_manager),
+):
+    from app.db.models import PayrollItem
+
+    result = await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        return RedirectResponse(url="/payroll", status_code=302)
+
+    result = await db.execute(select(PayrollItem).where(PayrollItem.id == item_id, PayrollItem.run_id == run_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+
+    result = await db.execute(select(User).where(User.id == item.user_id))
+    employee = result.scalar_one_or_none()
+
+    settings = get_settings()
+    details_data = await _build_employee_sheet_data(db=db, run=run, item=item, employee=employee, settings=settings)
+    view_mode = "full" if view == "full" else "short"
+    employee_name = employee.full_name if employee else f"Сотрудник #{item.user_id}"
+
+    svc = ReportService(export_dir="/tmp/pvz_exports")
+    path = svc.export_employee_sheet_xlsx(
+        run_id=run.id,
+        item_id=item.id,
+        employee_name=employee_name,
+        period_start=run.period_start,
+        period_end=run.period_end,
+        payout_day=run.payout_day,
+        item=item,
+        view_mode=view_mode,
+        details=details_data,
+        manager_bonus_3_per_ticket=settings.manager_bonus_3_per_ticket,
+        reserve_duty_bonus_rub=settings.reserve_duty_bonus_rub,
+        substitution_bonus_rub=settings.substitution_bonus_rub,
+    )
+
+    def iterfile():
+        with open(path, "rb") as f:
+            yield from f
+
+    return StreamingResponse(
+        iterfile(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+    )
+
+
+@router.get("/{run_id}/sheet/{item_id}/export.pdf")
+async def export_employee_sheet_pdf(
+    run_id: int,
+    item_id: int,
+    view: str = "short",
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_manager),
+):
+    from app.db.models import PayrollItem
+
+    result = await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))
+    run = result.scalar_one_or_none()
+    if not run:
+        return RedirectResponse(url="/payroll", status_code=302)
+
+    result = await db.execute(select(PayrollItem).where(PayrollItem.id == item_id, PayrollItem.run_id == run_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+
+    result = await db.execute(select(User).where(User.id == item.user_id))
+    employee = result.scalar_one_or_none()
+
+    settings = get_settings()
+    details_data = await _build_employee_sheet_data(db=db, run=run, item=item, employee=employee, settings=settings)
+    view_mode = "full" if view == "full" else "short"
+    employee_name = employee.full_name if employee else f"Сотрудник #{item.user_id}"
+
+    svc = ReportService(export_dir="/tmp/pvz_exports")
+    try:
+        path = svc.export_employee_sheet_pdf(
+            run_id=run.id,
+            item_id=item.id,
+            employee_name=employee_name,
+            period_start=run.period_start,
+            period_end=run.period_end,
+            payout_day=run.payout_day,
+            item=item,
+            view_mode=view_mode,
+            details=details_data,
+            manager_bonus_3_per_ticket=settings.manager_bonus_3_per_ticket,
+            reserve_duty_bonus_rub=settings.reserve_duty_bonus_rub,
+            substitution_bonus_rub=settings.substitution_bonus_rub,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    def iterfile():
+        with open(path, "rb") as f:
+            yield from f
+
+    return StreamingResponse(
+        iterfile(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+    )
 
 
 @router.get("/{run_id}/export")

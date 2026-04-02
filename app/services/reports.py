@@ -7,7 +7,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from app.db.models import Expense, Point, Shift, User
+from app.db.models import Expense, PayrollItem, Point, Shift, User
 from app.services.payroll import EmployeePayrollBreakdown
 
 
@@ -117,6 +117,362 @@ class ReportService:
 
         path = self.export_dir / f"payroll_sheets_{period_start}_{period_end}.xlsx"
         wb.save(path)
+        return path
+
+    @staticmethod
+    def _num(value: object) -> float:
+        if value is None:
+            return 0.0
+        if isinstance(value, Decimal):
+            return float(value)
+        try:
+            return float(value)
+        except Exception:
+            return 0.0
+
+    @staticmethod
+    def _safe_filename(value: str) -> str:
+        cleaned = "".join(ch if ch.isalnum() or ch in ("_", "-", ".") else "_" for ch in value.strip())
+        cleaned = cleaned.strip("._")
+        return cleaned or "employee"
+
+    def export_employee_sheet_xlsx(
+        self,
+        *,
+        run_id: int,
+        item_id: int,
+        employee_name: str,
+        period_start: date,
+        period_end: date,
+        payout_day: int,
+        item: PayrollItem,
+        view_mode: str,
+        details: dict,
+        manager_bonus_3_per_ticket: int,
+        reserve_duty_bonus_rub: int,
+        substitution_bonus_rub: int,
+    ) -> Path:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Sheet"
+
+        ws.append(["Расчётный лист"])
+        ws.append(["Сотрудник", employee_name])
+        ws.append(["Период", f"{period_start:%d.%m.%Y} - {period_end:%d.%m.%Y}"])
+        ws.append(["День выплаты", payout_day])
+        ws.append(["Режим", "Полная версия" if view_mode == "full" else "Краткая сводка"])
+        ws.append([])
+
+        summary_rows = [
+            ("Количество смен", item.shifts_count),
+            ("Отработано часов", self._num(item.hours_total)),
+            ("Оклад (базовая часть)", self._num(item.base_amount_rub)),
+            ("Премия за скорость приёмки", self._num(item.motivation_amount_rub)),
+            ("Премия за рейтинг, оценки клиентов", self._num(item.rating_bonus_rub)),
+            ("Премия за выдачу", self._num(item.issued_bonus_rub)),
+            ("Резервные дежурства", self._num(item.reserve_bonus_rub)),
+            ("Резервный выход", self._num(item.substitution_bonus_rub)),
+            ("Зависшие товары", -self._num(item.stuck_deduction_rub)),
+            ("Подмена товара", -self._num(item.substitution_deduction_rub)),
+            ("Брак товара", -self._num(item.defect_deduction_rub)),
+            ("Удержания по товарам (не оспорено)", -self._num(item.dispute_deduction_rub)),
+            ("Доп. выплаты менеджера", self._num(item.manager_bonus_rub)),
+            ("Премия / удержание руководства", self._num(item.adjustments_rub)),
+            ("Подытог (без ДС)", self._num(item.total_amount_rub) - self._num(item.debt_adjustment_rub)),
+            ("Долг / Переплата ДС", self._num(item.debt_adjustment_rub)),
+            ("ИТОГО К ВЫПЛАТЕ", self._num(item.total_amount_rub)),
+        ]
+        for label, value in summary_rows:
+            ws.append([label, value])
+
+        if view_mode == "full":
+            ws.append([])
+            ws.append(["Полная детализация"])
+            ws.append([])
+
+            ws.append(["1. Смены и стоимость"])
+            ws.append(["Дата", "ПВЗ", "Часы", "Тип", "Формула", "Стоимость", "Подмена"])
+            for row in details.get("shift_rows", []):
+                ws.append(
+                    [
+                        row["shift_date"].strftime("%d.%m.%Y"),
+                        row["point_name"],
+                        self._num(row.get("hours")),
+                        row.get("basis", ""),
+                        row.get("formula", ""),
+                        self._num(row.get("amount_rub")),
+                        "Да" if row.get("is_substitution") else "Нет",
+                    ]
+                )
+            ws.append(["", "", "", "", "Итого по сменам", self._num(details.get("shift_amount_total")), ""])
+            ws.append([])
+
+            ws.append([f"2. Резервные дежурства (+{reserve_duty_bonus_rub} ₽)"])
+            ws.append(["Дата", "ПВЗ", "Начисление"])
+            for row in details.get("reserve_rows", []):
+                ws.append([row["shift_date"].strftime("%d.%m.%Y"), row["point_name"], self._num(row["amount_rub"])])
+            ws.append(["", "Итого резерв", self._num(details.get("reserve_amount_total"))])
+            ws.append([])
+
+            ws.append([f"3. Резервные выходы (+{substitution_bonus_rub} ₽)"])
+            ws.append(["Дата", "ПВЗ", "Начисление"])
+            for row in details.get("substitution_rows", []):
+                ws.append([row["shift_date"].strftime("%d.%m.%Y"), row["point_name"], self._num(row["amount_rub"])])
+            ws.append(["", "Итого подмена", self._num(details.get("substitution_amount_total"))])
+            ws.append([])
+
+            ws.append(["4. Списания из оспариваний"])
+            ws.append(["Дата", "ПВЗ", "Тип", "Сумма", "ШК", "Тикет", "Статус", "Описание", "Ссылка"])
+            for row in details.get("appeal_rows", []):
+                ws.append(
+                    [
+                        row["case_date"].strftime("%d.%m.%Y"),
+                        row["point_name"],
+                        row["type_label"],
+                        -self._num(row["amount_rub"]),
+                        row["barcode"] or "",
+                        row["ticket_number"] or "",
+                        row["status_label"],
+                        row["description"] or "",
+                        f"/appeals/{row['id']}",
+                    ]
+                )
+            totals = details.get("appeal_totals", {})
+            ws.append(["", "", "Зависшие", -self._num(totals.get("stuck")), "", "", "", "", ""])
+            ws.append(["", "", "Подмена товара", -self._num(totals.get("substitution")), "", "", "", "", ""])
+            ws.append(["", "", "Брак товара", -self._num(totals.get("defect")), "", "", "", "", ""])
+            ws.append(["", "", "Прочие списания", -self._num(totals.get("other")), "", "", "", "", ""])
+            ws.append([])
+
+            details_map = details.get("details", {})
+            ws.append(["5. Премия за выдачу (детали)"])
+            ws.append(["Показатель", "Значение"])
+            ws.append(["Количество выданных товаров", details_map.get("issued_items", "0")])
+            ws.append(["Автоматическая премия за выдачу", details_map.get("issued_bonus_auto_rub", "0.00")])
+            ws.append(["Итоговая премия за выдачу", self._num(item.issued_bonus_rub)])
+            ws.append([])
+
+            ws.append([f"6. Премия/удержание руководства (бонус type3: {manager_bonus_3_per_ticket} ₽/тикет)"])
+            ws.append(["Тип", "Комментарий", "Сумма"])
+            for row in details.get("adjustment_rows", []):
+                ws.append([row["adjustment_type"], row["comment"] or "", self._num(row["amount_rub"])])
+
+        filename = (
+            f"payroll_sheet_run{run_id}_item{item_id}_{self._safe_filename(employee_name)}_{view_mode}.xlsx"
+        )
+        path = self.export_dir / filename
+        wb.save(path)
+        return path
+
+    def export_employee_sheet_pdf(
+        self,
+        *,
+        run_id: int,
+        item_id: int,
+        employee_name: str,
+        period_start: date,
+        period_end: date,
+        payout_day: int,
+        item: PayrollItem,
+        view_mode: str,
+        details: dict,
+        manager_bonus_3_per_ticket: int,
+        reserve_duty_bonus_rub: int,
+        substitution_bonus_rub: int,
+    ) -> Path:
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        except Exception as exc:
+            raise RuntimeError("PDF export requires 'reportlab' package in environment") from exc
+
+        font_name = "Helvetica"
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+        ]
+        for candidate in font_candidates:
+            if Path(candidate).exists():
+                try:
+                    pdfmetrics.getFont("PVZSans")
+                except Exception:
+                    pdfmetrics.registerFont(TTFont("PVZSans", candidate))
+                font_name = "PVZSans"
+                break
+
+        page_size = landscape(A4) if view_mode == "full" else A4
+        filename = f"payroll_sheet_run{run_id}_item{item_id}_{self._safe_filename(employee_name)}_{view_mode}.pdf"
+        path = self.export_dir / filename
+        doc = SimpleDocTemplate(
+            str(path),
+            pagesize=page_size,
+            leftMargin=24,
+            rightMargin=24,
+            topMargin=24,
+            bottomMargin=24,
+        )
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "pvzTitle",
+            parent=styles["Heading3"],
+            fontName=font_name,
+            fontSize=14,
+            leading=18,
+        )
+        normal_style = ParagraphStyle(
+            "pvzNormal",
+            parent=styles["Normal"],
+            fontName=font_name,
+            fontSize=9,
+            leading=12,
+        )
+        section_style = ParagraphStyle(
+            "pvzSection",
+            parent=styles["Heading4"],
+            fontName=font_name,
+            fontSize=11,
+            leading=14,
+        )
+
+        def _table(rows: list[list[object]], repeat: int = 1) -> Table:
+            table = Table(rows, repeatRows=repeat)
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("FONTNAME", (0, 0), (-1, -1), font_name),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
+                        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d1d5db")),
+                        ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ]
+                )
+            )
+            return table
+
+        story = []
+        story.append(Paragraph("Расчётный лист", title_style))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(f"Сотрудник: {employee_name}", normal_style))
+        story.append(
+            Paragraph(
+                f"Период: {period_start:%d.%m.%Y} - {period_end:%d.%m.%Y}; Выплата: {payout_day}-го числа",
+                normal_style,
+            )
+        )
+        story.append(Paragraph(f"Режим: {'Полная версия' if view_mode == 'full' else 'Краткая сводка'}", normal_style))
+        story.append(Spacer(1, 10))
+
+        summary_rows = [
+            ["Показатель", "Значение"],
+            ["Количество смен", item.shifts_count],
+            ["Отработано часов", self._num(item.hours_total)],
+            ["Оклад (базовая часть)", self._num(item.base_amount_rub)],
+            ["Премия за скорость приёмки", self._num(item.motivation_amount_rub)],
+            ["Премия за рейтинг", self._num(item.rating_bonus_rub)],
+            ["Премия за выдачу", self._num(item.issued_bonus_rub)],
+            ["Резервные дежурства", self._num(item.reserve_bonus_rub)],
+            ["Резервный выход", self._num(item.substitution_bonus_rub)],
+            ["Зависшие товары", -self._num(item.stuck_deduction_rub)],
+            ["Подмена товара", -self._num(item.substitution_deduction_rub)],
+            ["Брак товара", -self._num(item.defect_deduction_rub)],
+            ["Удержания по товарам", -self._num(item.dispute_deduction_rub)],
+            ["Доп. выплаты менеджера", self._num(item.manager_bonus_rub)],
+            ["Премия / удержание руководства", self._num(item.adjustments_rub)],
+            ["Подытог (без ДС)", self._num(item.total_amount_rub) - self._num(item.debt_adjustment_rub)],
+            ["Долг / Переплата ДС", self._num(item.debt_adjustment_rub)],
+            ["ИТОГО К ВЫПЛАТЕ", self._num(item.total_amount_rub)],
+        ]
+        story.append(_table(summary_rows))
+
+        if view_mode == "full":
+            story.append(Spacer(1, 10))
+            story.append(Paragraph("Полная детализация", section_style))
+            story.append(Spacer(1, 6))
+
+            shift_rows = [["Дата", "ПВЗ", "Часы", "Тип", "Формула", "Стоимость", "Подмена"]]
+            for row in details.get("shift_rows", []):
+                shift_rows.append(
+                    [
+                        row["shift_date"].strftime("%d.%m.%Y"),
+                        row["point_name"],
+                        f"{self._num(row.get('hours')):.2f}",
+                        row.get("basis", ""),
+                        row.get("formula", ""),
+                        f"{self._num(row.get('amount_rub')):.2f}",
+                        "Да" if row.get("is_substitution") else "Нет",
+                    ]
+                )
+            if len(shift_rows) == 1:
+                shift_rows.append(["—", "Нет данных", "", "", "", "", ""])
+            story.append(Paragraph("1. Смены и стоимость", section_style))
+            story.append(_table(shift_rows))
+            story.append(Spacer(1, 6))
+
+            appeal_rows = [["Дата", "ПВЗ", "Тип", "Сумма", "ШК", "Тикет", "Статус", "Описание", "Ссылка"]]
+            for row in details.get("appeal_rows", []):
+                appeal_rows.append(
+                    [
+                        row["case_date"].strftime("%d.%m.%Y"),
+                        row["point_name"],
+                        row["type_label"],
+                        f"-{self._num(row['amount_rub']):.2f}",
+                        row["barcode"] or "—",
+                        row["ticket_number"] or "—",
+                        row["status_label"],
+                        row["description"] or "—",
+                        f"/appeals/{row['id']}",
+                    ]
+                )
+            if len(appeal_rows) == 1:
+                appeal_rows.append(["—", "Нет списаний", "", "", "", "", "", "", ""])
+            story.append(Paragraph("2. Списания из оспариваний", section_style))
+            story.append(_table(appeal_rows))
+            story.append(Spacer(1, 6))
+
+            details_map = details.get("details", {})
+            issue_rows = [
+                ["Показатель", "Значение"],
+                ["Количество выданных товаров", str(details_map.get("issued_items", "0"))],
+                ["Автоматическая премия за выдачу", str(details_map.get("issued_bonus_auto_rub", "0.00"))],
+                ["Итоговая премия за выдачу", f"{self._num(item.issued_bonus_rub):.2f}"],
+            ]
+            story.append(Paragraph("3. Премия за выдачу (детали)", section_style))
+            story.append(_table(issue_rows))
+            story.append(Spacer(1, 6))
+
+            adjustment_rows = [["Тип", "Комментарий", "Сумма"]]
+            for row in details.get("adjustment_rows", []):
+                adjustment_rows.append(
+                    [
+                        row["adjustment_type"],
+                        row["comment"] or "—",
+                        f"{self._num(row['amount_rub']):.2f}",
+                    ]
+                )
+            if len(adjustment_rows) == 1:
+                adjustment_rows.append(["—", "Нет ручных корректировок", "0.00"])
+            story.append(
+                Paragraph(
+                    (
+                        "4. Премия/удержание руководства "
+                        f"(бонус type3: {manager_bonus_3_per_ticket} ₽/тикет; "
+                        f"резерв: +{reserve_duty_bonus_rub}; подмена: +{substitution_bonus_rub})"
+                    ),
+                    section_style,
+                )
+            )
+            story.append(_table(adjustment_rows))
+
+        doc.build(story)
         return path
 
     def export_shifts_csv(
