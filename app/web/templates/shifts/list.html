@@ -11,6 +11,24 @@
     </div>
 </div>
 
+{% if notice == "planned_saved" %}
+<div class="alert alert-success py-2">Плановая смена сохранена.</div>
+{% elif notice == "planned_deleted" %}
+<div class="alert alert-success py-2">Плановая смена удалена.</div>
+{% endif %}
+
+{% if error == "forbidden" %}
+<div class="alert alert-danger py-2">Недостаточно прав для операции.</div>
+{% elif error == "invalid_date" %}
+<div class="alert alert-danger py-2">Некорректная дата.</div>
+{% elif error == "required_fields" %}
+<div class="alert alert-danger py-2">Заполните обязательные поля.</div>
+{% elif error == "point_not_assigned" %}
+<div class="alert alert-warning py-2">Эта точка не назначена сотруднику.</div>
+{% elif error == "not_found" %}
+<div class="alert alert-warning py-2">Запись не найдена.</div>
+{% endif %}
+
 <div class="filters-bar">
     <form method="get" class="row g-2 align-items-end">
         <div class="col-md-2">
@@ -19,6 +37,15 @@
                 <option value="0">Все точки</option>
                 {% for p in points %}
                 <option value="{{ p.id }}" {% if point_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Сотрудник</label>
+            <select class="form-select form-select-sm" name="employee_id">
+                <option value="0">Все сотрудники</option>
+                {% for u in users_filter %}
+                <option value="{{ u.id }}" {% if employee_id == u.id %}selected{% endif %}>{{ u.full_name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -41,6 +68,123 @@
         </div>
     </form>
 </div>
+
+{% if can_manage_schedule %}
+<div class="table-container mb-3">
+    <div class="px-3 py-2 border-bottom bg-light">
+        <strong>Плановые смены — удобное управление без календаря</strong>
+    </div>
+    <div class="p-3 border-bottom">
+        <form method="post" action="/shifts/planned/create" class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small">Дата</label>
+                <input type="date" class="form-control form-control-sm" name="shift_date" value="{{ today_iso }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Сотрудник</label>
+                {% if can_manage_all_schedule %}
+                <select class="form-select form-select-sm" name="user_id" required>
+                    <option value="">Выберите сотрудника</option>
+                    {% for u in editable_users %}
+                    <option value="{{ u.id }}">{{ u.full_name }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="hidden" name="user_id" value="{{ managed_user_id }}">
+                <input type="text" class="form-control form-control-sm" value="{{ users_map.get(managed_user_id).full_name if users_map.get(managed_user_id) else 'Мой график' }}" disabled>
+                {% endif %}
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Точка</label>
+                <select class="form-select form-select-sm" name="point_id" required>
+                    <option value="">Выберите точку</option>
+                    {% for p in editable_points %}
+                    <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Примечание</label>
+                <input type="text" class="form-control form-control-sm" name="notes" maxlength="255" placeholder="необязательно">
+            </div>
+            <div class="col-md-2">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="createReserve" name="is_reserve">
+                    <label class="form-check-label small" for="createReserve">Резерв</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="createSubst" name="is_substitution">
+                    <label class="form-check-label small" for="createSubst">Рез. выход (+500)</label>
+                </div>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-sm btn-primary">
+                    <i class="bi bi-plus-circle"></i> Создать / обновить смену
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <table class="table mb-0">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Сотрудник</th>
+                <th>Точка</th>
+                <th>Резерв</th>
+                <th>Рез. выход</th>
+                <th>Примечание</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in planned_items %}
+            <tr>
+                <td>{{ item.shift_date.strftime('%d.%m.%Y') }}</td>
+                <td>{{ users_map.get(item.user_id).full_name if users_map.get(item.user_id) else '-' }}</td>
+                <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
+                <td>
+                    {% if item.is_reserve %}
+                    <span class="badge bg-warning text-dark">Да (+400)</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Нет</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.is_substitution %}
+                    <span class="badge bg-info text-dark">Да (+500)</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Нет</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.notes or '-' }}</td>
+                <td class="d-flex gap-1 justify-content-end">
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary js-edit-planned"
+                            data-id="{{ item.id }}"
+                            data-date="{{ item.shift_date.isoformat() }}"
+                            data-user-id="{{ item.user_id }}"
+                            data-point-id="{{ item.point_id }}"
+                            data-is-reserve="{{ 1 if item.is_reserve else 0 }}"
+                            data-is-substitution="{{ 1 if item.is_substitution else 0 }}"
+                            data-notes="{{ item.notes or '' }}">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <form method="post" action="/shifts/planned/{{ item.id }}/delete" class="d-inline"
+                          onsubmit="return confirm('Удалить плановую смену?');">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">Плановых смен не найдено</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 
 <div class="table-container">
     <table class="table">
@@ -78,44 +222,96 @@
         </tbody>
     </table>
     {% set reserve_flag = '1' if show_reserve else '0' %}
-    {{ pagination(page, total_pages, total, '/shifts?point_id=' + point_id|string + '&date_from=' + date_from + '&date_to=' + date_to + '&show_reserve=' + reserve_flag) }}
+    {{ pagination(page, total_pages, total, '/shifts?point_id=' + point_id|string + '&employee_id=' + employee_id|string + '&date_from=' + date_from + '&date_to=' + date_to + '&show_reserve=' + reserve_flag) }}
 </div>
 
-{% if show_reserve %}
-<div class="table-container mt-3">
-    <div class="px-3 py-2 border-bottom bg-light">
-        <strong>Резервный график (+400 ₽ за дежурство)</strong>
+{% endblock %}
+
+{% block extra_js %}
+<div class="modal fade" id="editPlannedModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" id="editPlannedForm" action="">
+                <div class="modal-header">
+                    <h5 class="modal-title">Редактировать плановую смену</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-2">
+                        <label class="form-label small">Дата</label>
+                        <input type="date" class="form-control form-control-sm" id="edit_shift_date" name="shift_date" required>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Сотрудник</label>
+                        {% if can_manage_all_schedule %}
+                        <select class="form-select form-select-sm" id="edit_user_id" name="user_id" required>
+                            {% for u in editable_users %}
+                            <option value="{{ u.id }}">{{ u.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="hidden" id="edit_user_id" name="user_id" value="{{ managed_user_id }}">
+                        <input type="text" class="form-control form-control-sm" value="{{ users_map.get(managed_user_id).full_name if users_map.get(managed_user_id) else 'Мой график' }}" disabled>
+                        {% endif %}
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small">Точка</label>
+                        <select class="form-select form-select-sm" id="edit_point_id" name="point_id" required>
+                            {% for p in editable_points %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="edit_is_reserve" name="is_reserve">
+                        <label class="form-check-label small" for="edit_is_reserve">Резерв (+400)</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="edit_is_substitution" name="is_substitution">
+                        <label class="form-check-label small" for="edit_is_substitution">Резервный выход (+500)</label>
+                    </div>
+                    <div>
+                        <label class="form-label small">Примечание</label>
+                        <input type="text" class="form-control form-control-sm" id="edit_notes" name="notes" maxlength="255">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+                </div>
+            </form>
+        </div>
     </div>
-    <table class="table mb-0">
-        <thead>
-            <tr>
-                <th>Дата</th>
-                <th>Сотрудник</th>
-                <th>Точка</th>
-                <th>Резервный выход</th>
-                <th>Заметка</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in reserve_items %}
-            <tr>
-                <td>{{ item.shift_date.strftime('%d.%m.%Y') }}</td>
-                <td>{{ users_map.get(item.user_id).full_name if users_map.get(item.user_id) else '-' }}</td>
-                <td>{{ points_map.get(item.point_id).name if points_map.get(item.point_id) else '-' }}</td>
-                <td>
-                    {% if item.is_substitution %}
-                    <span class="badge bg-info text-dark">Да (+500 ₽)</span>
-                    {% else %}
-                    <span class="badge bg-secondary">Нет</span>
-                    {% endif %}
-                </td>
-                <td>{{ item.notes or '-' }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="5" class="text-center text-muted py-4">Резервных дежурств не найдено</td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
 </div>
-{% endif %}
+
+<script>
+(function () {
+    var modalEl = document.getElementById('editPlannedModal');
+    if (!modalEl) return;
+    var modal = new bootstrap.Modal(modalEl);
+
+    document.querySelectorAll('.js-edit-planned').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = btn.getAttribute('data-id');
+            var date = btn.getAttribute('data-date') || '';
+            var userId = btn.getAttribute('data-user-id') || '';
+            var pointId = btn.getAttribute('data-point-id') || '';
+            var isReserve = btn.getAttribute('data-is-reserve') === '1';
+            var isSubstitution = btn.getAttribute('data-is-substitution') === '1';
+            var notes = btn.getAttribute('data-notes') || '';
+
+            var form = document.getElementById('editPlannedForm');
+            form.action = '/shifts/planned/' + id + '/update';
+            document.getElementById('edit_shift_date').value = date;
+            var userInput = document.getElementById('edit_user_id');
+            if (userInput) userInput.value = userId;
+            document.getElementById('edit_point_id').value = pointId;
+            document.getElementById('edit_is_reserve').checked = isReserve;
+            document.getElementById('edit_is_substitution').checked = isSubstitution;
+            document.getElementById('edit_notes').value = notes;
+            modal.show();
+        });
+    });
+}());
+</script>
 {% endblock %}

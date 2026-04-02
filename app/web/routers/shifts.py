@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import PlannedShift, Point, Shift, User, WebUser
+from app.db.models import EmployeePointAssignment, PlannedShift, Point, Shift, User, WebUser
 from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db
 
@@ -17,6 +17,40 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
+
+
+MANAGER_ROLES = {"superadmin", "admin", "manager", "senior"}
+
+
+def _can_manage_all_schedule(current_user: WebUser) -> bool:
+    return bool(set(current_user.roles).intersection(MANAGER_ROLES))
+
+
+def _can_manage_own_schedule(current_user: WebUser) -> bool:
+    return bool(current_user.user_id and "employee" in current_user.roles)
+
+
+def _can_manage_user_schedule(current_user: WebUser, user_id: int) -> bool:
+    if _can_manage_all_schedule(current_user):
+        return True
+    return bool(_can_manage_own_schedule(current_user) and current_user.user_id == user_id)
+
+
+def _to_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "да"}
+    return False
+
+
+def _parse_int(value, default: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
 
 
 @router.get("", response_class=HTMLResponse)
@@ -30,7 +64,18 @@ async def list_shifts(
     date_to: str = "",
     show_reserve: int = 0,
     page: int = 1,
+    notice: str = "",
+    error: str = "",
 ):
+    can_manage_all = _can_manage_all_schedule(current_user)
+    can_manage_own = _can_manage_own_schedule(current_user)
+    can_manage_schedule = can_manage_all or can_manage_own
+    managed_user_id = current_user.user_id if can_manage_own else 0
+
+    effective_employee_id = employee_id
+    if can_manage_own and not can_manage_all:
+        effective_employee_id = managed_user_id
+
     per_page = 30
     query = select(Shift)
     parsed_date_from = parse_date(date_from) if date_from else None
@@ -38,8 +83,8 @@ async def list_shifts(
 
     if point_id:
         query = query.where(Shift.point_id == point_id)
-    if employee_id:
-        query = query.where(Shift.user_id == employee_id)
+    if effective_employee_id:
+        query = query.where(Shift.user_id == effective_employee_id)
     if parsed_date_from:
         query = query.where(Shift.shift_date >= parsed_date_from)
     if parsed_date_to:
@@ -57,21 +102,44 @@ async def list_shifts(
     points_map = {p.id: p for p in points}
 
     users_result = await db.execute(select(User))
-    users_map = {u.id: u for u in users_result.scalars().all()}
+    users_all = users_result.scalars().all()
+    users_map = {u.id: u for u in users_all}
+    users_active = [u for u in users_all if u.is_active]
+    users_filter = users_active
+    if can_manage_own and not can_manage_all and managed_user_id:
+        users_filter = [u for u in users_active if u.id == managed_user_id]
 
-    reserve_items: list[PlannedShift] = []
+    editable_users: list[User] = []
+    if can_manage_all:
+        editable_users = sorted(users_active, key=lambda u: (u.full_name or "").lower())
+    elif can_manage_own and managed_user_id:
+        own_user = users_map.get(managed_user_id)
+        editable_users = [own_user] if own_user else []
+
+    editable_points = points
+    if can_manage_own and managed_user_id and not can_manage_all:
+        assignment_rows = (await db.execute(
+            select(EmployeePointAssignment).where(
+                EmployeePointAssignment.user_id == managed_user_id,
+                EmployeePointAssignment.is_active == True,
+            )
+        )).scalars().all()
+        allowed_point_ids = {a.point_id for a in assignment_rows}
+        editable_points = [p for p in points if p.id in allowed_point_ids]
+
+    planned_query = select(PlannedShift)
+    if point_id:
+        planned_query = planned_query.where(PlannedShift.point_id == point_id)
+    if effective_employee_id:
+        planned_query = planned_query.where(PlannedShift.user_id == effective_employee_id)
+    if parsed_date_from:
+        planned_query = planned_query.where(PlannedShift.shift_date >= parsed_date_from)
+    if parsed_date_to:
+        planned_query = planned_query.where(PlannedShift.shift_date <= parsed_date_to)
     if show_reserve:
-        reserve_query = select(PlannedShift).where(PlannedShift.is_reserve == True)
-        if point_id:
-            reserve_query = reserve_query.where(PlannedShift.point_id == point_id)
-        if employee_id:
-            reserve_query = reserve_query.where(PlannedShift.user_id == employee_id)
-        if parsed_date_from:
-            reserve_query = reserve_query.where(PlannedShift.shift_date >= parsed_date_from)
-        if parsed_date_to:
-            reserve_query = reserve_query.where(PlannedShift.shift_date <= parsed_date_to)
-        reserve_query = reserve_query.order_by(PlannedShift.shift_date.desc(), PlannedShift.id.desc())
-        reserve_items = (await db.execute(reserve_query)).scalars().all()
+        planned_query = planned_query.where(PlannedShift.is_reserve == True)
+    planned_query = planned_query.order_by(PlannedShift.shift_date.desc(), PlannedShift.id.desc()).limit(500)
+    planned_items = (await db.execute(planned_query)).scalars().all()
 
     return templates.TemplateResponse(request, "shifts/list.html", {
         "current_user": current_user,
@@ -84,11 +152,21 @@ async def list_shifts(
         "points_map": points_map,
         "users_map": users_map,
         "point_id": point_id,
-        "employee_id": employee_id,
+        "employee_id": effective_employee_id,
         "date_from": date_from,
         "date_to": date_to,
         "show_reserve": bool(show_reserve),
-        "reserve_items": reserve_items,
+        "users_active": users_active,
+        "users_filter": users_filter,
+        "planned_items": planned_items,
+        "editable_users": editable_users,
+        "editable_points": editable_points,
+        "can_manage_schedule": can_manage_schedule,
+        "can_manage_all_schedule": can_manage_all,
+        "managed_user_id": managed_user_id,
+        "notice": notice,
+        "error": error,
+        "today_iso": date.today().isoformat(),
         "shift_state_labels": {"open": "Открыта", "closed": "Закрыта"},
     })
 
@@ -271,14 +349,10 @@ async def create_planned_shift(
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
 ):
-    def _to_bool(value) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value != 0
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes", "on", "да"}
-        return False
+    can_manage_all = _can_manage_all_schedule(current_user)
+    can_manage_own = _can_manage_own_schedule(current_user)
+    if not (can_manage_all or can_manage_own):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
 
     data = await request.json()
     try:
@@ -286,14 +360,28 @@ async def create_planned_shift(
     except (ValueError, TypeError):
         return JSONResponse({"error": "invalid date"}, status_code=400)
 
-    user_id = int(data.get("user_id", 0))
-    point_id = int(data.get("point_id", 0))
+    requested_user_id = _parse_int(data.get("user_id", 0), default=0)
+    user_id = requested_user_id if can_manage_all else int(current_user.user_id or 0)
+    point_id = _parse_int(data.get("point_id", 0), default=0)
     notes = str(data.get("notes", "")).strip() or None
     is_reserve = _to_bool(data.get("is_reserve", False))
     is_substitution = _to_bool(data.get("is_substitution", False))
 
     if not user_id or not point_id:
         return JSONResponse({"error": "user_id and point_id required"}, status_code=400)
+    if not _can_manage_user_schedule(current_user, user_id):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    if can_manage_own and not can_manage_all:
+        assignment = (await db.execute(
+            select(EmployeePointAssignment).where(
+                EmployeePointAssignment.user_id == user_id,
+                EmployeePointAssignment.point_id == point_id,
+                EmployeePointAssignment.is_active == True,
+            )
+        )).scalar_one_or_none()
+        if not assignment:
+            return JSONResponse({"error": "point is not assigned to employee"}, status_code=400)
 
     # Upsert: delete existing for same user+date, then insert
     existing = (await db.execute(
@@ -332,7 +420,160 @@ async def delete_planned_shift(
     ps = (await db.execute(
         select(PlannedShift).where(PlannedShift.id == planned_id)
     )).scalar_one_or_none()
-    if ps:
+    if ps and _can_manage_user_schedule(current_user, ps.user_id):
         await db.delete(ps)
         await db.commit()
     return JSONResponse({"ok": True})
+
+
+@router.post("/planned/create")
+async def create_planned_shift_form(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    can_manage_all = _can_manage_all_schedule(current_user)
+    can_manage_own = _can_manage_own_schedule(current_user)
+    if not (can_manage_all or can_manage_own):
+        return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
+
+    form = await request.form()
+    try:
+        shift_date = date.fromisoformat(str(form.get("shift_date", ""))[:10])
+    except Exception:
+        return RedirectResponse(url="/shifts?error=invalid_date", status_code=302)
+
+    requested_user_id = _parse_int(form.get("user_id", 0), default=0)
+    user_id = requested_user_id if can_manage_all else int(current_user.user_id or 0)
+    point_id = _parse_int(form.get("point_id", 0), default=0)
+    notes = str(form.get("notes", "")).strip() or None
+    is_reserve = form.get("is_reserve") == "on"
+    is_substitution = form.get("is_substitution") == "on"
+
+    if not user_id or not point_id:
+        return RedirectResponse(url="/shifts?error=required_fields", status_code=302)
+    if not _can_manage_user_schedule(current_user, user_id):
+        return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
+
+    if can_manage_own and not can_manage_all:
+        assignment = (await db.execute(
+            select(EmployeePointAssignment).where(
+                EmployeePointAssignment.user_id == user_id,
+                EmployeePointAssignment.point_id == point_id,
+                EmployeePointAssignment.is_active == True,
+            )
+        )).scalar_one_or_none()
+        if not assignment:
+            return RedirectResponse(url="/shifts?error=point_not_assigned", status_code=302)
+
+    existing = (await db.execute(
+        select(PlannedShift).where(
+            PlannedShift.user_id == user_id,
+            PlannedShift.shift_date == shift_date,
+        )
+    )).scalar_one_or_none()
+
+    if existing:
+        existing.point_id = point_id
+        existing.notes = notes
+        existing.is_reserve = is_reserve
+        existing.is_substitution = is_substitution
+    else:
+        db.add(PlannedShift(
+            user_id=user_id,
+            point_id=point_id,
+            shift_date=shift_date,
+            notes=notes,
+            is_reserve=is_reserve,
+            is_substitution=is_substitution,
+        ))
+    await db.commit()
+    return RedirectResponse(url="/shifts?notice=planned_saved", status_code=302)
+
+
+@router.post("/planned/{planned_id}/update")
+async def update_planned_shift_form(
+    planned_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    can_manage_all = _can_manage_all_schedule(current_user)
+    can_manage_own = _can_manage_own_schedule(current_user)
+    if not (can_manage_all or can_manage_own):
+        return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
+
+    planned = (await db.execute(
+        select(PlannedShift).where(PlannedShift.id == planned_id)
+    )).scalar_one_or_none()
+    if not planned:
+        return RedirectResponse(url="/shifts?error=not_found", status_code=302)
+    if not _can_manage_user_schedule(current_user, planned.user_id):
+        return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
+
+    form = await request.form()
+    try:
+        shift_date = date.fromisoformat(str(form.get("shift_date", ""))[:10])
+    except Exception:
+        return RedirectResponse(url="/shifts?error=invalid_date", status_code=302)
+
+    new_user_id = _parse_int(form.get("user_id", planned.user_id), default=planned.user_id)
+    user_id = new_user_id if can_manage_all else planned.user_id
+    point_id = _parse_int(form.get("point_id", planned.point_id), default=planned.point_id)
+    notes = str(form.get("notes", "")).strip() or None
+    is_reserve = form.get("is_reserve") == "on"
+    is_substitution = form.get("is_substitution") == "on"
+
+    if not _can_manage_user_schedule(current_user, user_id):
+        return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
+
+    if can_manage_own and not can_manage_all:
+        assignment = (await db.execute(
+            select(EmployeePointAssignment).where(
+                EmployeePointAssignment.user_id == user_id,
+                EmployeePointAssignment.point_id == point_id,
+                EmployeePointAssignment.is_active == True,
+            )
+        )).scalar_one_or_none()
+        if not assignment:
+            return RedirectResponse(url="/shifts?error=point_not_assigned", status_code=302)
+
+    duplicate = (await db.execute(
+        select(PlannedShift).where(
+            PlannedShift.user_id == user_id,
+            PlannedShift.shift_date == shift_date,
+            PlannedShift.id != planned_id,
+        )
+    )).scalar_one_or_none()
+
+    target = duplicate or planned
+    target.user_id = user_id
+    target.point_id = point_id
+    target.shift_date = shift_date
+    target.notes = notes
+    target.is_reserve = is_reserve
+    target.is_substitution = is_substitution
+    if duplicate:
+        await db.delete(planned)
+
+    await db.commit()
+    return RedirectResponse(url="/shifts?notice=planned_saved", status_code=302)
+
+
+@router.post("/planned/{planned_id}/delete")
+async def delete_planned_shift_form(
+    planned_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    planned = (await db.execute(
+        select(PlannedShift).where(PlannedShift.id == planned_id)
+    )).scalar_one_or_none()
+    if not planned:
+        return RedirectResponse(url="/shifts?error=not_found", status_code=302)
+    if not _can_manage_user_schedule(current_user, planned.user_id):
+        return RedirectResponse(url="/shifts?error=forbidden", status_code=302)
+
+    await db.delete(planned)
+    await db.commit()
+    return RedirectResponse(url="/shifts?notice=planned_deleted", status_code=302)
