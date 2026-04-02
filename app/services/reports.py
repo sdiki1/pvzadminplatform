@@ -296,7 +296,7 @@ class ReportService:
         except Exception as exc:
             raise RuntimeError("PDF export requires 'reportlab' package in environment") from exc
 
-        font_name = "Helvetica"
+        font_name = None
         font_candidates = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
             "/usr/share/fonts/dejavu/DejaVuSans.ttf",
@@ -312,6 +312,12 @@ class ReportService:
                     pdfmetrics.registerFont(TTFont("PVZSans", candidate))
                 font_name = "PVZSans"
                 break
+
+        if not font_name:
+            raise RuntimeError(
+                "No Unicode font found for PDF export. "
+                "Install fonts-dejavu-core in container or provide DejaVuSans.ttf."
+            )
 
         page_size = landscape(A4) if view_mode == "full" else A4
         filename = f"payroll_sheet_run{run_id}_item{item_id}_{self._safe_filename(employee_name)}_{view_mode}.pdf"
@@ -332,6 +338,7 @@ class ReportService:
             fontName=font_name,
             fontSize=14,
             leading=18,
+            textColor=colors.HexColor("#0f172a"),
         )
         normal_style = ParagraphStyle(
             "pvzNormal",
@@ -339,6 +346,7 @@ class ReportService:
             fontName=font_name,
             fontSize=9,
             leading=12,
+            textColor=colors.HexColor("#334155"),
         )
         section_style = ParagraphStyle(
             "pvzSection",
@@ -346,22 +354,48 @@ class ReportService:
             fontName=font_name,
             fontSize=11,
             leading=14,
+            textColor=colors.HexColor("#1d4ed8"),
         )
 
-        def _table(rows: list[list[object]], repeat: int = 1) -> Table:
+        def _table(
+            rows: list[list[object]],
+            repeat: int = 1,
+            highlight_last_row: bool = False,
+            detect_negative: bool = True,
+        ) -> Table:
             table = Table(rows, repeatRows=repeat)
-            table.setStyle(
-                TableStyle(
+            style_cmds: list[tuple] = [
+                ("FONTNAME", (0, 0), (-1, -1), font_name),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e1")),
+                ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+            if len(rows) > 1:
+                for row_idx in range(1, len(rows)):
+                    if row_idx % 2 == 0:
+                        style_cmds.append(
+                            ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.HexColor("#f8fafc"))
+                        )
+            if highlight_last_row and len(rows) > 1:
+                style_cmds.extend(
                     [
-                        ("FONTNAME", (0, 0), (-1, -1), font_name),
-                        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
-                        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d1d5db")),
-                        ("ALIGN", (-1, 0), (-1, -1), "RIGHT"),
-                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("BACKGROUND", (0, len(rows) - 1), (-1, len(rows) - 1), colors.HexColor("#dcfce7")),
+                        ("TEXTCOLOR", (0, len(rows) - 1), (-1, len(rows) - 1), colors.HexColor("#14532d")),
+                        ("FONTNAME", (0, len(rows) - 1), (-1, len(rows) - 1), font_name),
                     ]
                 )
-            )
+            if detect_negative:
+                for row_idx in range(1, len(rows)):
+                    for col_idx, cell_value in enumerate(rows[row_idx]):
+                        cell_text = str(cell_value).strip().replace(" ", "")
+                        if cell_text.startswith("-"):
+                            style_cmds.append(
+                                ("TEXTCOLOR", (col_idx, row_idx), (col_idx, row_idx), colors.HexColor("#b91c1c"))
+                            )
+            table.setStyle(TableStyle(style_cmds))
             return table
 
         story = []
@@ -397,7 +431,7 @@ class ReportService:
             ["Долг / Переплата ДС", self._num(item.debt_adjustment_rub)],
             ["ИТОГО К ВЫПЛАТЕ", self._num(item.total_amount_rub)],
         ]
-        story.append(_table(summary_rows))
+        story.append(_table(summary_rows, highlight_last_row=True))
 
         if view_mode == "full":
             story.append(Spacer(1, 10))
@@ -452,7 +486,7 @@ class ReportService:
                 ["Итоговая премия за выдачу", f"{self._num(item.issued_bonus_rub):.2f}"],
             ]
             story.append(Paragraph("3. Премия за выдачу (детали)", section_style))
-            story.append(_table(issue_rows))
+            story.append(_table(issue_rows, detect_negative=False))
             story.append(Spacer(1, 6))
 
             adjustment_rows = [["Тип", "Комментарий", "Сумма"]]
