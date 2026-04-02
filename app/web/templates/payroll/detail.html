@@ -11,6 +11,7 @@
             &middot; Сформирована {{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}
         </p>
     </div>
+    {% if can_manage_payroll %}
     <div class="d-flex gap-2">
         <a href="/payroll/{{ run.id }}/export" class="btn btn-success">
             <i class="bi bi-file-earmark-excel"></i> Сводная XLSX
@@ -19,6 +20,7 @@
             <i class="bi bi-file-earmark-excel"></i> Расчётные листы XLSX
         </a>
     </div>
+    {% endif %}
 </div>
 
 <div class="row mb-4">

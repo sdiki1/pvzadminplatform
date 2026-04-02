@@ -16,24 +16,29 @@ from app.db.models import (
     Appeal,
     ApprovalStatus,
     ManualAdjustment,
+    PayrollItem,
     PayrollRun,
     PlannedShift,
     Point,
     Shift,
     ShiftState,
     User,
+    WebUser,
 )
 from app.db.repositories import PayrollRepo, UserRepo
 from app.services.email import EmailService
 from app.services.payroll import PayrollService
 from app.services.reports import ReportService
 from app.utils.parsing import normalize_text
-from app.web.deps import get_db, is_restricted_manager, require_manager
+from app.web.deps import get_current_user, get_db, is_restricted_manager, require_manager
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
+
+
+PAYROLL_MANAGE_ROLES = {"superadmin", "admin", "manager", "senior"}
 
 
 APPEAL_TYPE_LABELS = {
@@ -50,6 +55,19 @@ APPEAL_STATUS_LABELS = {
     "not_appealed": "Не оспорено",
     "closed": "Закрыто",
 }
+
+
+def _can_manage_payroll(current_user: WebUser) -> bool:
+    return bool(set(current_user.roles).intersection(PAYROLL_MANAGE_ROLES))
+
+
+def _can_view_own_payroll(current_user: WebUser) -> bool:
+    return bool("employee" in set(current_user.roles) and current_user.user_id)
+
+
+def _ensure_payroll_access(current_user: WebUser) -> None:
+    if not (_can_manage_payroll(current_user) or _can_view_own_payroll(current_user)):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
 
 
 def _to_decimal(value: object) -> Decimal:
@@ -423,15 +441,27 @@ def _collect_user_inputs_from_form(form) -> dict[str, dict[str, str]]:
 async def list_payroll_runs(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user: WebUser = Depends(get_current_user),
 ):
+    _ensure_payroll_access(current_user)
     repo = PayrollRepo(db)
     runs = await repo.list_runs(limit=50)
+
+    if not _can_manage_payroll(current_user) and current_user.user_id:
+        allowed_run_ids = set((
+            await db.execute(
+                select(PayrollItem.run_id)
+                .where(PayrollItem.user_id == current_user.user_id)
+                .distinct()
+            )
+        ).scalars().all())
+        runs = [run for run in runs if run.id in allowed_run_ids]
 
     return templates.TemplateResponse(request, "payroll/list.html", {
         "current_user": current_user,
         "active_page": "payroll",
         "runs": runs,
+        "can_manage_payroll": _can_manage_payroll(current_user),
     })
 
 
@@ -516,8 +546,9 @@ async def view_payroll_run(
     run_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user: WebUser = Depends(get_current_user),
 ):
+    _ensure_payroll_access(current_user)
     result = await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))
     run = result.scalar_one_or_none()
     if not run:
@@ -526,9 +557,14 @@ async def view_payroll_run(
     repo = PayrollRepo(db)
     items = await repo.list_run_items(run_id)
 
-    # manager: only own payroll item
-    if is_restricted_manager(current_user) and current_user.user_id:
+    # manager-only account: only own payroll item
+    if _can_manage_payroll(current_user) and is_restricted_manager(current_user) and current_user.user_id:
         items = [i for i in items if i.user_id == current_user.user_id]
+    # employee: only own payroll item
+    elif not _can_manage_payroll(current_user) and current_user.user_id:
+        items = [i for i in items if i.user_id == current_user.user_id]
+        if not items:
+            return RedirectResponse(url="/payroll", status_code=302)
 
     user_repo = UserRepo(db)
     users = await user_repo.list_all()
@@ -543,6 +579,7 @@ async def view_payroll_run(
         "items": items,
         "users_map": users_map,
         "total_amount": total_amount,
+        "can_manage_payroll": _can_manage_payroll(current_user),
     })
 
 
@@ -552,10 +589,10 @@ async def view_employee_sheet(
     item_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user: WebUser = Depends(get_current_user),
     view: str = "short",
 ):
-    from app.db.models import PayrollItem
+    _ensure_payroll_access(current_user)
 
     result = await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))
     run = result.scalar_one_or_none()
@@ -567,8 +604,11 @@ async def view_employee_sheet(
     if not item:
         return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
 
-    # manager: block access to other employees' sheets
-    if is_restricted_manager(current_user) and current_user.user_id and item.user_id != current_user.user_id:
+    # manager-only account: block access to other employees' sheets
+    if _can_manage_payroll(current_user) and is_restricted_manager(current_user) and current_user.user_id and item.user_id != current_user.user_id:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+    # employee: only own sheet
+    if not _can_manage_payroll(current_user) and current_user.user_id and item.user_id != current_user.user_id:
         return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
 
     result = await db.execute(select(User).where(User.id == item.user_id))
@@ -598,9 +638,9 @@ async def export_employee_sheet_xlsx(
     item_id: int,
     view: str = "short",
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user: WebUser = Depends(get_current_user),
 ):
-    from app.db.models import PayrollItem
+    _ensure_payroll_access(current_user)
 
     result = await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))
     run = result.scalar_one_or_none()
@@ -610,6 +650,13 @@ async def export_employee_sheet_xlsx(
     result = await db.execute(select(PayrollItem).where(PayrollItem.id == item_id, PayrollItem.run_id == run_id))
     item = result.scalar_one_or_none()
     if not item:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+
+    # manager-only account: block access to other employees' sheets
+    if _can_manage_payroll(current_user) and is_restricted_manager(current_user) and current_user.user_id and item.user_id != current_user.user_id:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+    # employee: only own sheet
+    if not _can_manage_payroll(current_user) and current_user.user_id and item.user_id != current_user.user_id:
         return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
 
     result = await db.execute(select(User).where(User.id == item.user_id))
@@ -653,9 +700,9 @@ async def export_employee_sheet_pdf(
     item_id: int,
     view: str = "short",
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_manager),
+    current_user: WebUser = Depends(get_current_user),
 ):
-    from app.db.models import PayrollItem
+    _ensure_payroll_access(current_user)
 
     result = await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))
     run = result.scalar_one_or_none()
@@ -665,6 +712,13 @@ async def export_employee_sheet_pdf(
     result = await db.execute(select(PayrollItem).where(PayrollItem.id == item_id, PayrollItem.run_id == run_id))
     item = result.scalar_one_or_none()
     if not item:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+
+    # manager-only account: block access to other employees' sheets
+    if _can_manage_payroll(current_user) and is_restricted_manager(current_user) and current_user.user_id and item.user_id != current_user.user_id:
+        return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
+    # employee: only own sheet
+    if not _can_manage_payroll(current_user) and current_user.user_id and item.user_id != current_user.user_id:
         return RedirectResponse(url=f"/payroll/{run_id}", status_code=302)
 
     result = await db.execute(select(User).where(User.id == item.user_id))
