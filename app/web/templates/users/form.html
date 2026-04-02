@@ -64,6 +64,21 @@
                 </div>
                 <div class="form-text">Выберите одну или несколько ролей. Если ничего не выбрано — назначается «Просмотр».</div>
             </div>
+
+            {% if item %}
+            <div class="col-md-6">
+                <label class="form-label">Привязанный сотрудник</label>
+                <select class="form-select" name="employee_id">
+                    <option value="">— не привязан —</option>
+                    {% for e in (employees or []) %}
+                    <option value="{{ e.id }}" {% if item and item.user_id == e.id %}selected{% endif %}>
+                        {{ e.full_name }}{% if not e.is_active %} (неактивен){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text">Связь 1:1 — один сотрудник может быть привязан только к одному аккаунту.</div>
+            </div>
+            {% endif %}
         </div>
         <div class="mt-4">
             <button type="submit" class="btn btn-primary">Сохранить</button>

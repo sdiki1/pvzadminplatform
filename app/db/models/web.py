@@ -13,8 +13,9 @@ from sqlalchemy import (
     String,
     Text,
     Index,
+    UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -32,6 +33,9 @@ class WebRoleEnum(str, Enum):
 
 class WebUser(Base):
     __tablename__ = "web_users"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_web_user_employee"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     login: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
@@ -46,6 +50,8 @@ class WebUser(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    employee: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id], lazy="select")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False

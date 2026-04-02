@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Мой кабинет{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-person-badge me-2"></i>Мой кабинет</h1>
+</div>
+
+<div class="row g-3">
+    {# Employee info #}
+    <div class="col-md-4">
+        <div class="form-card h-100">
+            <h6 class="mb-3">Сотрудник</h6>
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div style="width:48px;height:48px;border-radius:50%;background:{{ employee.color or '#6366f1' }};display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;font-weight:700;flex-shrink:0">
+                    {{ employee.full_name[0] }}
+                </div>
+                <div>
+                    <div class="fw-bold">{{ employee.full_name }}</div>
+                    <div class="small text-muted">{{ employee.role.value }}</div>
+                </div>
+            </div>
+            <div class="small text-muted">Сегодня: <strong>{{ today.strftime('%d.%m.%Y') }}</strong></div>
+        </div>
+    </div>
+
+    {# Shift block #}
+    <div class="col-md-8">
+        <div class="form-card h-100">
+            <h6 class="mb-3">Смена</h6>
+            {% if open_shift %}
+            {# Open shift active #}
+            <div class="alert alert-success d-flex align-items-center gap-3 mb-3" style="border-radius:12px">
+                <i class="bi bi-circle-fill text-success" style="font-size:20px;animation:pulse 1.5s infinite"></i>
+                <div class="flex-grow-1">
+                    <div class="fw-bold">Смена открыта</div>
+                    <div class="small">{{ points_map.get(open_shift.point_id).name if points_map.get(open_shift.point_id) else '—' }}</div>
+                    <div class="small text-muted">с {{ open_shift.opened_at.strftime('%H:%M') }}</div>
+                </div>
+                <form method="post" action="/my/shift/close" onsubmit="return confirm('Закрыть смену?')">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-stop-circle me-1"></i>Закрыть смену
+                    </button>
+                </form>
+            </div>
+            {% else %}
+            {# Open shift form #}
+            <form method="post" action="/my/shift/open" class="d-flex gap-2 align-items-end flex-wrap mb-3">
+                <div>
+                    <label class="form-label mb-1 small fw-semibold">Точка</label>
+                    <select class="form-select form-select-sm" name="point_id" required style="min-width:200px">
+                        <option value="">Выберите точку</option>
+                        {% for p in points %}
+                        <option value="{{ p.id }}">{{ p.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success btn-sm">
+                    <i class="bi bi-play-circle me-1"></i>Открыть смену
+                </button>
+            </form>
+            {% endif %}
+
+            {# Today's closed shifts #}
+            {% if today_closed %}
+            <div class="mt-2">
+                <div class="small text-muted fw-semibold mb-1">Сегодня завершено:</div>
+                {% for s in today_closed %}
+                <div class="small text-muted">
+                    {{ points_map.get(s.point_id).name if points_map.get(s.point_id) else '?' }}
+                    · {{ s.opened_at.strftime('%H:%M') }}–{{ s.closed_at.strftime('%H:%M') if s.closed_at else '?' }}
+                    {% if s.duration_minutes %}· {{ (s.duration_minutes // 60) }}ч {{ (s.duration_minutes % 60) }}мин{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# Planned shifts #}
+<div class="form-card mt-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0">Расписание (ближайшие 14 дней)</h6>
+    </div>
+
+    {% if upcoming_planned %}
+    <table class="table table-sm">
+        <thead><tr><th>Дата</th><th>Точка</th><th>Примечание</th><th></th></tr></thead>
+        <tbody>
+            {% for ps in upcoming_planned %}
+            <tr>
+                <td>{{ ps.shift_date.strftime('%d.%m %a') }}</td>
+                <td>{{ points_map.get(ps.point_id).name if points_map.get(ps.point_id) else '—' }}</td>
+                <td class="text-muted small">{{ ps.notes or '' }}</td>
+                <td>
+                    <form method="post" action="/my/schedule/{{ ps.id }}/delete" style="display:inline">
+                        <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2"
+                                onclick="return confirm('Удалить запись?')">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="text-muted small mb-3">Нет запланированных смен</p>
+    {% endif %}
+
+    <hr>
+    <h6 class="mb-2">Добавить в расписание</h6>
+    <form method="post" action="/my/schedule/add" class="d-flex gap-2 align-items-end flex-wrap">
+        <div>
+            <label class="form-label mb-1 small fw-semibold">Дата</label>
+            <input type="date" class="form-control form-control-sm" name="shift_date" required style="min-width:150px">
+        </div>
+        <div>
+            <label class="form-label mb-1 small fw-semibold">Точка</label>
+            <select class="form-select form-select-sm" name="point_id" required style="min-width:200px">
+                <option value="">Выберите</option>
+                {% for p in points %}
+                <option value="{{ p.id }}">{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label mb-1 small fw-semibold">Примечание</label>
+            <input type="text" class="form-control form-control-sm" name="notes" placeholder="необязательно" style="min-width:150px">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+</style>
+{% endblock %}

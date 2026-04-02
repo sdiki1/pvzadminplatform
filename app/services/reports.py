@@ -4,6 +4,7 @@ import csv
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+import unicodedata
 
 from openpyxl import Workbook
 
@@ -132,7 +133,12 @@ class ReportService:
 
     @staticmethod
     def _safe_filename(value: str) -> str:
-        cleaned = "".join(ch if ch.isalnum() or ch in ("_", "-", ".") else "_" for ch in value.strip())
+        ascii_value = (
+            unicodedata.normalize("NFKD", value.strip())
+            .encode("ascii", "ignore")
+            .decode("ascii")
+        )
+        cleaned = "".join(ch if ch.isalnum() or ch in ("_", "-", ".") else "_" for ch in ascii_value)
         cleaned = cleaned.strip("._")
         return cleaned or "employee"
 

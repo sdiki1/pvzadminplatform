@@ -92,6 +92,7 @@ async def new_user(
         "active_page": "users",
         "item": None,
         "web_roles": WEB_ROLES,
+        "employees": [],
         "error": None,
     })
 
@@ -170,11 +171,14 @@ async def edit_user(
     if not user:
         return RedirectResponse(url="/users", status_code=302)
 
+    employees = (await db.execute(select(User).order_by(User.full_name))).scalars().all()
+
     return templates.TemplateResponse(request, "users/form.html", {
         "current_user": current_user,
         "active_page": "users",
         "item": user,
         "web_roles": WEB_ROLES,
+        "employees": employees,
         "error": None,
     })
 
@@ -223,6 +227,8 @@ async def update_user(
     user.is_active = new_is_active
     if new_password:
         user.password_hash = hash_password(new_password)
+    raw_emp_id = str(form.get("employee_id", "")).strip()
+    user.user_id = int(raw_emp_id) if raw_emp_id.isdigit() else None
 
     await db.commit()
     return RedirectResponse(url="/users", status_code=302)
