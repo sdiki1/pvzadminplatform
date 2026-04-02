@@ -217,7 +217,11 @@
             <select id="fillPoint" class="form-select form-select-sm">
                 <option value="">— выберите —</option>
                 {% for p in points %}
-                <option value="{{ p.id }}">{{ p.short_name or p.name }}</option>
+                <option value="{{ p.id }}"
+                        data-work-start="{{ p.work_start.strftime('%H:%M') if p.work_start else '' }}"
+                        data-work-end="{{ p.work_end.strftime('%H:%M') if p.work_end else '' }}">
+                    {{ p.short_name or p.name }}
+                </option>
                 {% endfor %}
             </select>
         </div>
@@ -310,7 +314,11 @@
         <select id="bookPoint" class="form-select form-select-sm">
             <option value="">— выберите —</option>
             {% for p in points %}
-            <option value="{{ p.id }}">{{ p.name }}</option>
+            <option value="{{ p.id }}"
+                    data-work-start="{{ p.work_start.strftime('%H:%M') if p.work_start else '' }}"
+                    data-work-end="{{ p.work_end.strftime('%H:%M') if p.work_end else '' }}">
+                {{ p.name }}
+            </option>
             {% endfor %}
         </select>
     </div>
@@ -400,12 +408,38 @@
         return startMin !== null && endMin !== null && endMin > startMin;
     }
 
+    function getSelectedPointHours(selectEl) {
+        if (!selectEl) return { start: '', end: '' };
+        var idx = selectEl.selectedIndex;
+        if (idx < 0) return { start: '', end: '' };
+        var opt = selectEl.options[idx];
+        if (!opt) return { start: '', end: '' };
+        return {
+            start: (opt.getAttribute('data-work-start') || '').trim(),
+            end: (opt.getAttribute('data-work-end') || '').trim(),
+        };
+    }
+
+    function applyPointHours(selectEl, startInputEl, endInputEl, force) {
+        var hours = getSelectedPointHours(selectEl);
+        if (!hours.start || !hours.end) return;
+        if (force || !startInputEl.value) startInputEl.value = hours.start;
+        if (force || !endInputEl.value) endInputEl.value = hours.end;
+    }
+
     function openBook(dateStr, preset) {
-        document.getElementById('bookDate').value  = dateStr || '';
-        document.getElementById('bookUser').value  = '';
-        document.getElementById('bookPoint').value = '';
-        document.getElementById('bookStartTime').value = '09:00';
-        document.getElementById('bookEndTime').value = '21:00';
+        var bookDateEl = document.getElementById('bookDate');
+        var bookUserEl = document.getElementById('bookUser');
+        var bookPointEl = document.getElementById('bookPoint');
+        var bookStartEl = document.getElementById('bookStartTime');
+        var bookEndEl = document.getElementById('bookEndTime');
+
+        bookDateEl.value  = dateStr || '';
+        bookUserEl.value  = '';
+        bookPointEl.value = pointFilter.value && pointFilter.value !== '0' ? pointFilter.value : '';
+        bookStartEl.value = '09:00';
+        bookEndEl.value = '21:00';
+        applyPointHours(bookPointEl, bookStartEl, bookEndEl, true);
         document.getElementById('bookNotes').value = '';
         var reserveVal = reserveMode;
         var reserveExitVal = false;
@@ -416,10 +450,10 @@
             reserveExitVal = !!preset.isReserveExit;
         }
         if (preset && preset.startTime) {
-            document.getElementById('bookStartTime').value = preset.startTime;
+            bookStartEl.value = preset.startTime;
         }
         if (preset && preset.endTime) {
-            document.getElementById('bookEndTime').value = preset.endTime;
+            bookEndEl.value = preset.endTime;
         }
         document.getElementById('bookReserve').checked = reserveVal;
         document.getElementById('bookSubstitution').checked = reserveExitVal;
@@ -439,6 +473,14 @@
             openBook('', { isReserve: false, isReserveExit: true });
         });
     }
+    document.getElementById('bookPoint').addEventListener('change', function () {
+        applyPointHours(
+            document.getElementById('bookPoint'),
+            document.getElementById('bookStartTime'),
+            document.getElementById('bookEndTime'),
+            true
+        );
+    });
 
     document.getElementById('bookSave').addEventListener('click', function () {
         var dateVal  = document.getElementById('bookDate').value;
@@ -527,6 +569,7 @@
         if (pointFilter.value && pointFilter.value !== '0' && !fillPoint.value) {
             fillPoint.value = pointFilter.value;
         }
+        applyPointHours(fillPoint, fillStartTime, fillEndTime, true);
         setFillStatus('Режим включён: нажимайте на даты в календаре.', 'ok');
     }
 
@@ -545,6 +588,9 @@
     });
 
     btnFillClose.addEventListener('click', closeFillMode);
+    fillPoint.addEventListener('change', function () {
+        applyPointHours(fillPoint, fillStartTime, fillEndTime, true);
+    });
 
     function getFillSelection() {
         return {
