@@ -8,6 +8,17 @@
     <a href="/users/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Добавить</a>
 </div>
 
+{% if notice == "deleted" %}
+<div class="alert alert-success py-2">Пользователь удалён.</div>
+{% endif %}
+{% if error == "not_found" %}
+<div class="alert alert-danger py-2">Пользователь не найден.</div>
+{% elif error == "cannot_delete_self" %}
+<div class="alert alert-warning py-2">Нельзя удалить текущего пользователя.</div>
+{% elif error == "last_superadmin" %}
+<div class="alert alert-warning py-2">Нельзя удалить последнего активного суперадмина.</div>
+{% endif %}
+
 <div class="filters-bar">
     <form method="get" class="row g-2 align-items-end">
         <div class="col-md-3"><input type="text" class="form-control form-control-sm" name="search" value="{{ search }}" placeholder="Поиск по ФИО / логину"></div>
@@ -17,6 +28,19 @@
                 {% for code, label in web_roles %}
                 <option value="{{ code }}" {% if role == code %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="sort_by">
+                {% for code, label in sort_options %}
+                <option value="{{ code }}" {% if sort_by == code %}selected{% endif %}>Сортировка: {{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select class="form-select form-select-sm" name="sort_dir">
+                <option value="asc" {% if sort_dir == "asc" %}selected{% endif %}>По возрастанию</option>
+                <option value="desc" {% if sort_dir == "desc" %}selected{% endif %}>По убыванию</option>
             </select>
         </div>
         <div class="col-auto"><button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-search"></i></button></div>
@@ -59,6 +83,15 @@
                             onclick="openCreateEmployee({{ item.id }}, '{{ item.full_name | replace("'", "\\'") }}', '{{ item.phone or '' }}')">
                         <i class="bi bi-person-plus"></i>
                     </button>
+                    <form method="post" action="/users/{{ item.id }}/delete" class="d-inline"
+                          onsubmit="return confirm('Удалить пользователя {{ item.login }}? Это действие необратимо.');">
+                        <button type="submit"
+                                class="btn btn-sm btn-outline-danger"
+                                title="Удалить"
+                                {% if item.id == current_user.id %}disabled{% endif %}>
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
                 </td>
             </tr>
             {% else %}
@@ -66,7 +99,7 @@
             {% endfor %}
         </tbody>
     </table>
-    {{ pagination(page, total_pages, total, '/users?search=' + search + '&role=' + role) }}
+    {{ pagination(page, total_pages, total, '/users?search=' + search + '&role=' + role + '&sort_by=' + sort_by + '&sort_dir=' + sort_dir) }}
 </div>
 
 {# ── Create employee modal ── #}

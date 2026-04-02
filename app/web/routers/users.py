@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import asc, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -33,6 +33,36 @@ WEB_ROLES = [
 
 ROLE_LABELS = dict(WEB_ROLES)
 
+SORT_OPTIONS = [
+    ("id", "ID"),
+    ("login", "Логин"),
+    ("full_name", "ФИО"),
+    ("is_active", "Статус"),
+    ("last_login_at", "Последний вход"),
+    ("created_at", "Дата создания"),
+]
+
+
+def _parse_sort(sort_by: str, sort_dir: str) -> tuple[str, str]:
+    valid_fields = {name for name, _ in SORT_OPTIONS}
+    normalized_field = sort_by if sort_by in valid_fields else "full_name"
+    normalized_dir = "desc" if sort_dir == "desc" else "asc"
+    return normalized_field, normalized_dir
+
+
+def _sort_expression(sort_by: str, sort_dir: str):
+    field_map = {
+        "id": WebUser.id,
+        "login": WebUser.login,
+        "full_name": WebUser.full_name,
+        "is_active": WebUser.is_active,
+        "last_login_at": WebUser.last_login_at,
+        "created_at": WebUser.created_at,
+    }
+    col = field_map.get(sort_by, WebUser.full_name)
+    primary = desc(col) if sort_dir == "desc" else asc(col)
+    return primary, asc(WebUser.id)
+
 
 def _parse_roles(form) -> list[str]:
     """Extract selected roles from form checkboxes (name='roles')."""
@@ -49,10 +79,15 @@ async def list_users(
     current_user: WebUser = Depends(require_admin),
     search: str = "",
     role: str = "",
+    sort_by: str = "full_name",
+    sort_dir: str = "asc",
     page: int = 1,
+    notice: str = "",
+    error: str = "",
 ):
     per_page = 25
     query = select(WebUser)
+    sort_by, sort_dir = _parse_sort(sort_by, sort_dir)
 
     if search:
         query = query.where(
@@ -63,7 +98,8 @@ async def list_users(
         query = query.where(WebUser.roles_json.contains(role))
 
     total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
-    query = query.order_by(WebUser.full_name).offset((page - 1) * per_page).limit(per_page)
+    order_primary, order_secondary = _sort_expression(sort_by, sort_dir)
+    query = query.order_by(order_primary, order_secondary).offset((page - 1) * per_page).limit(per_page)
     result = await db.execute(query)
     users = result.scalars().all()
     total_pages = max(1, (total + per_page - 1) // per_page)
@@ -77,6 +113,11 @@ async def list_users(
         "total_pages": total_pages,
         "search": search,
         "role": role,
+        "sort_by": sort_by,
+        "sort_dir": sort_dir,
+        "sort_options": SORT_OPTIONS,
+        "notice": notice,
+        "error": error,
         "web_roles": WEB_ROLES,
         "role_labels": ROLE_LABELS,
     })
@@ -277,3 +318,35 @@ async def create_employee_from_web_user(
     await db.commit()
     await db.refresh(employee)
     return RedirectResponse(url=f"/employees/{employee.id}", status_code=302)
+
+
+@router.post("/{user_id}/delete")
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(require_admin),
+):
+    user = (await db.execute(select(WebUser).where(WebUser.id == user_id))).scalar_one_or_none()
+    if not user:
+        return RedirectResponse(url="/users?error=not_found", status_code=302)
+
+    if user.id == current_user.id:
+        return RedirectResponse(url="/users?error=cannot_delete_self", status_code=302)
+
+    if "superadmin" in user.roles:
+        active_superadmins = (
+            await db.execute(
+                select(func.count())
+                .select_from(WebUser)
+                .where(
+                    WebUser.is_active.is_(True),
+                    WebUser.roles_json.contains("superadmin"),
+                )
+            )
+        ).scalar() or 0
+        if active_superadmins <= 1:
+            return RedirectResponse(url="/users?error=last_superadmin", status_code=302)
+
+    await db.delete(user)
+    await db.commit()
+    return RedirectResponse(url="/users?notice=deleted", status_code=302)
