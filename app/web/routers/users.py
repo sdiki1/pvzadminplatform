@@ -134,6 +134,7 @@ async def new_user(
         "item": None,
         "web_roles": WEB_ROLES,
         "employees": [],
+        "linked_employee": None,
         "error": None,
     })
 
@@ -154,6 +155,8 @@ async def create_user(
             "active_page": "users",
             "item": None,
             "web_roles": WEB_ROLES,
+            "employees": [],
+            "linked_employee": None,
             "error": "Логин и пароль обязательны",
         })
 
@@ -164,6 +167,8 @@ async def create_user(
             "active_page": "users",
             "item": None,
             "web_roles": WEB_ROLES,
+            "employees": [],
+            "linked_employee": None,
             "error": "Пользователь с таким логином уже существует",
         })
 
@@ -213,6 +218,9 @@ async def edit_user(
         return RedirectResponse(url="/users", status_code=302)
 
     employees = (await db.execute(select(User).order_by(User.full_name))).scalars().all()
+    linked_employee = None
+    if user.user_id:
+        linked_employee = (await db.execute(select(User).where(User.id == user.user_id))).scalar_one_or_none()
 
     return templates.TemplateResponse(request, "users/form.html", {
         "current_user": current_user,
@@ -220,6 +228,7 @@ async def edit_user(
         "item": user,
         "web_roles": WEB_ROLES,
         "employees": employees,
+        "linked_employee": linked_employee,
         "error": None,
     })
 
@@ -269,7 +278,21 @@ async def update_user(
     if new_password:
         user.password_hash = hash_password(new_password)
     raw_emp_id = str(form.get("employee_id", "")).strip()
-    user.user_id = int(raw_emp_id) if raw_emp_id.isdigit() else None
+    new_emp_id = int(raw_emp_id) if raw_emp_id.isdigit() else None
+    user.user_id = new_emp_id
+
+    # Update telegram_id on the linked employee
+    raw_tg_id = str(form.get("telegram_id", "")).strip()
+    if new_emp_id and raw_tg_id.lstrip("-").isdigit():
+        new_tg_id = int(raw_tg_id)
+        employee = (await db.execute(select(User).where(User.id == new_emp_id))).scalar_one_or_none()
+        if employee and employee.telegram_id != new_tg_id:
+            # Make sure the new ID isn't taken by another employee
+            conflict = (await db.execute(
+                select(User).where(User.telegram_id == new_tg_id, User.id != new_emp_id)
+            )).scalar_one_or_none()
+            if not conflict:
+                employee.telegram_id = new_tg_id
 
     await db.commit()
     return RedirectResponse(url="/users", status_code=302)

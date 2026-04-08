@@ -78,6 +78,16 @@
                 </select>
                 <div class="form-text">Связь 1:1 — один сотрудник может быть привязан только к одному аккаунту.</div>
             </div>
+            <div class="col-md-6">
+                <label class="form-label">Telegram ID</label>
+                <input type="text" class="form-control" name="telegram_id"
+                       value="{{ linked_employee.telegram_id if linked_employee and linked_employee.telegram_id and linked_employee.telegram_id > 0 else '' }}"
+                       placeholder="123456789" inputmode="numeric">
+                <div class="form-text">
+                    ID пользователя в Telegram. Используется для авторизации в боте.
+                    {% if not linked_employee %}<span class="text-warning">Сначала привяжите сотрудника.</span>{% endif %}
+                </div>
+            </div>
             {% endif %}
         </div>
         <div class="mt-4">
