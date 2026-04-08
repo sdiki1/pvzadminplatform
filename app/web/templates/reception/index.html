@@ -67,6 +67,12 @@
 }
 .reception-table .cell-input.saving { background: #dcfce7; }
 .reception-table .cell-input.error  { background: #fee2e2; }
+/* items_given coloring */
+.reception-table td.cell-warn  { background: #fef9c3 !important; }  /* >350 yellow */
+.reception-table td.cell-alert { background: #fee2e2 !important; }  /* >500 red   */
+/* acceptance_amount negative */
+.reception-table td.cell-negative { background: #fee2e2 !important; }
+.reception-table .cell-input.val-negative { color: #b91c1c; font-weight: 600; }
 .row-items    .row-label { color: #1d4ed8; }
 .row-clients  .row-label { color: #065f46; }
 .row-accept   .row-label { color: #7c3aed; }
@@ -190,6 +196,25 @@ function navigate() {
     window.location.href = '/reception?point_id=' + pid + '&year={{ year }}&month={{ month }}';
 }
 
+function colorizeCell(input) {
+    var td = input.parentElement;
+    var field = input.dataset.field;
+    if (field === 'items_given') {
+        var v = parseInt(input.value || '0') || 0;
+        td.classList.remove('cell-warn', 'cell-alert');
+        if (v > 500)      td.classList.add('cell-alert');
+        else if (v > 350) td.classList.add('cell-warn');
+    } else if (field === 'acceptance_amount') {
+        var v = parseFloat(input.value.replace(',', '.') || '0') || 0;
+        td.classList.toggle('cell-negative', v < 0);
+        input.classList.toggle('val-negative', v < 0);
+    }
+}
+
+function colorizeAll() {
+    document.querySelectorAll('.cell-input').forEach(colorizeCell);
+}
+
 function recalcSums() {
     ['items_given', 'clients_count'].forEach(function(field) {
         var inputs = document.querySelectorAll('[data-field="' + field + '"]');
@@ -229,6 +254,7 @@ document.querySelectorAll('.cell-input').forEach(function(input) {
                 statusEl.textContent = '✓ Сохранено';
                 setTimeout(function() { statusEl.textContent = ''; }, 2000);
                 recalcSums();
+                colorizeCell(el);
             } else {
                 el.classList.add('error');
                 statusEl.textContent = '✗ Ошибка: ' + (data.error || '');
@@ -286,5 +312,7 @@ document.querySelectorAll('.cell-input').forEach(function(input) {
         }
     });
 });
+
+colorizeAll();
 </script>
 {% endblock %}
