@@ -112,6 +112,44 @@ def _ensure_payroll_item_columns(sync_conn) -> None:
         sync_conn.execute(text(stmt))
 
 
+def _ensure_point_columns(sync_conn) -> None:
+    """Add email field to points table."""
+    try:
+        existing_cols = {c["name"] for c in inspect(sync_conn).get_columns("points")}
+    except Exception:
+        return
+
+    statements: list[str] = []
+    if "email" not in existing_cols:
+        statements.append("ALTER TABLE points ADD COLUMN email VARCHAR(255)")
+
+    for stmt in statements:
+        sync_conn.execute(text(stmt))
+
+
+def _ensure_shift_open_codes_table(sync_conn) -> None:
+    """Create shift_open_codes table if it doesn't exist yet."""
+    try:
+        inspector = inspect(sync_conn)
+        if "shift_open_codes" not in inspector.get_table_names():
+            sync_conn.execute(text("""
+                CREATE TABLE shift_open_codes (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    point_id INTEGER NOT NULL REFERENCES points(id) ON DELETE CASCADE,
+                    shift_date DATE NOT NULL,
+                    code VARCHAR(4) NOT NULL,
+                    used BOOLEAN NOT NULL DEFAULT FALSE,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """))
+            sync_conn.execute(text("CREATE INDEX ix_shift_open_codes_user_id ON shift_open_codes(user_id)"))
+            sync_conn.execute(text("CREATE INDEX ix_shift_open_codes_point_id ON shift_open_codes(point_id)"))
+    except Exception:
+        return
+
+
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -119,3 +157,5 @@ async def init_db() -> None:
         await conn.run_sync(_ensure_appeal_columns)
         await conn.run_sync(_ensure_planned_shift_columns)
         await conn.run_sync(_ensure_payroll_item_columns)
+        await conn.run_sync(_ensure_point_columns)
+        await conn.run_sync(_ensure_shift_open_codes_table)
