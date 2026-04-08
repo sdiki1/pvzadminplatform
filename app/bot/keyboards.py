@@ -21,7 +21,10 @@ def _btn(text: str, data: str) -> InlineKeyboardButton:
 
 MAIN_MENU = InlineKeyboardMarkup(
     inline_keyboard=[
-        [_btn("🟢 Начать смену", "shift:open")],
+        [
+            _btn("🟢 Начать смену", "shift:open"),
+            _btn("🔴 Закрыть смену", "shift:close"),
+        ],
     ]
 )
 

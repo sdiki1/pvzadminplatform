@@ -12,8 +12,6 @@ from app.bot import notify
 from app.bot.context import ensure_actor
 from app.bot.keyboards import (
     MAIN_MENU,
-    geofence_approve_keyboard,
-    remove_keyboard,
     shift_open_points_keyboard,
 )
 from app.bot.states import OpenShiftState
@@ -81,16 +79,14 @@ async def cmd_menu(message: Message, state: FSMContext) -> None:
 @router.callback_query(F.data == "shift:cancel")
 async def cb_cancel(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
-    await callback.message.edit_text("❌ Отменено", reply_markup=None)
-    await callback.message.answer("📋 Меню", reply_markup=MAIN_MENU)
+    await callback.message.edit_text("❌ Отменено\n\n📋 Меню", reply_markup=MAIN_MENU)
     await callback.answer()
 
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("❌ Действие отменено", reply_markup=remove_keyboard())
-    await message.answer("📋 Меню", reply_markup=MAIN_MENU)
+    await message.answer("❌ Действие отменено\n\n📋 Меню", reply_markup=MAIN_MENU)
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +132,7 @@ async def cb_shift_open(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Open shift — Step 2: point selected → send code to PVZ email
+# Open shift — Step 2: point selected → send code or open directly
 # ---------------------------------------------------------------------------
 
 @router.callback_query(OpenShiftState.waiting_point, F.data.startswith("openpoint:"))
@@ -149,48 +145,33 @@ async def cb_open_point_selected(callback: CallbackQuery, state: FSMContext) -> 
             await state.clear()
             return
 
-        point = (await session.execute(select(Point).where(Point.id == point_id))).scalar_one_or_none()
+        point = (await session.execute(
+            select(Point).where(Point.id == point_id)
+        )).scalar_one_or_none()
         if not point:
             await state.clear()
-            await callback.message.edit_text("❌ Точка не найдена.", reply_markup=None)
+            await callback.message.edit_text("❌ Точка не найдена.\n\n📋 Меню", reply_markup=MAIN_MENU)
             await callback.answer()
             return
 
-        if not point.email:
-            # No email configured — open shift directly
-            today = datetime.now(TZ).date()
-            planned = (await session.execute(
-                select(PlannedShift).where(
-                    PlannedShift.user_id == actor.id,
-                    PlannedShift.shift_date == today,
-                    PlannedShift.point_id == point_id,
-                )
-            )).scalar_one_or_none()
-            if not planned:
-                await state.clear()
-                await callback.message.edit_text("❌ Плановая смена не найдена.", reply_markup=None)
-                await callback.answer()
-                return
+        today = datetime.now(TZ).date()
 
-            now = datetime.now(TZ).replace(tzinfo=None)
-            shift_repo = ShiftRepo(session)
-            shift = await shift_repo.create_open_shift(
-                user_id=actor.id,
-                point_id=point.id,
-                shift_date=now.date(),
-                opened_at=now,
-                open_lat=0.0,
-                open_lon=0.0,
-                open_distance_m=0.0,
-                open_geo_status=GeoStatus.OK,
-                open_approval_status=ApprovalStatus.APPROVED,
+        planned = (await session.execute(
+            select(PlannedShift).where(
+                PlannedShift.user_id == actor.id,
+                PlannedShift.shift_date == today,
+                PlannedShift.point_id == point_id,
             )
-            point_name = point.name
+        )).scalar_one_or_none()
+        if not planned:
+            await state.clear()
+            await callback.message.edit_text("❌ Плановая смена не найдена.\n\n📋 Меню", reply_markup=MAIN_MENU)
+            await callback.answer()
+            return
 
-        else:
+        if point.email:
             # Send code to point email
             svc = EmailService(settings)
-            today = datetime.now(TZ).date()
             try:
                 await svc.send_shift_open_code(
                     db=session,
@@ -204,10 +185,9 @@ async def cb_open_point_selected(callback: CallbackQuery, state: FSMContext) -> 
             except Exception:
                 await state.clear()
                 await callback.message.edit_text(
-                    "❌ Не удалось отправить код. Попробуйте позже или обратитесь к администратору.",
-                    reply_markup=None,
+                    "❌ Не удалось отправить код. Попробуйте позже или обратитесь к администратору.\n\n📋 Меню",
+                    reply_markup=MAIN_MENU,
                 )
-                await callback.message.answer("📋 Меню", reply_markup=MAIN_MENU)
                 await callback.answer()
                 return
 
@@ -222,19 +202,35 @@ async def cb_open_point_selected(callback: CallbackQuery, state: FSMContext) -> 
             await callback.answer()
             return
 
-    # No-email path: shift already created above
+        # No email — open shift directly
+        now = datetime.now(TZ).replace(tzinfo=None)
+        shift_repo = ShiftRepo(session)
+        await shift_repo.create_open_shift(
+            user_id=actor.id,
+            point_id=point.id,
+            shift_date=now.date(),
+            opened_at=now,
+            open_lat=0.0,
+            open_lon=0.0,
+            open_distance_m=0.0,
+            open_geo_status=GeoStatus.OK,
+            open_approval_status=ApprovalStatus.APPROVED,
+        )
+        point_name = point.name
+        employee_name = actor.full_name
+
     await state.clear()
     await callback.message.edit_text(
         f"🟢 <b>Смена начата!</b>\n\n"
         f"📍 {point_name}\n"
-        f"⏰ {now:%H:%M}",
-        reply_markup=None,
+        f"⏰ {now:%H:%M}\n\n"
+        f"📋 Меню",
+        reply_markup=MAIN_MENU,
     )
-    await callback.message.answer("📋 Меню", reply_markup=MAIN_MENU)
     await callback.answer()
 
     await notify.notify_shift_opened(
-        employee_name=actor.full_name,
+        employee_name=employee_name,
         point_name=point_name,
         opened_at_str=f"{now:%H:%M}",
         geo_ok=True,
@@ -254,7 +250,7 @@ async def fsm_open_code(message: Message, state: FSMContext) -> None:
 
     if not point_id:
         await state.clear()
-        await message.answer("⚠️ Ошибка. Начните заново.", reply_markup=MAIN_MENU)
+        await message.answer("⚠️ Ошибка. Начните заново.\n\n📋 Меню", reply_markup=MAIN_MENU)
         return
 
     async with SessionLocal() as session:
@@ -279,7 +275,6 @@ async def fsm_open_code(message: Message, state: FSMContext) -> None:
             )
             return
 
-        # Verify planned shift still exists
         planned = (await session.execute(
             select(PlannedShift).where(
                 PlannedShift.user_id == actor.id,
@@ -289,8 +284,7 @@ async def fsm_open_code(message: Message, state: FSMContext) -> None:
         )).scalar_one_or_none()
         if not planned:
             await state.clear()
-            await message.answer("❌ Плановая смена не найдена.")
-            await message.answer("📋 Меню", reply_markup=MAIN_MENU)
+            await message.answer("❌ Плановая смена не найдена.\n\n📋 Меню", reply_markup=MAIN_MENU)
             return
 
         now = datetime.now(TZ).replace(tzinfo=None)
@@ -306,20 +300,79 @@ async def fsm_open_code(message: Message, state: FSMContext) -> None:
             open_geo_status=GeoStatus.OK,
             open_approval_status=ApprovalStatus.APPROVED,
         )
+        employee_name = actor.full_name
 
     await state.clear()
     await message.answer(
         f"🟢 <b>Смена начата!</b>\n\n"
         f"📍 {point_name}\n"
         f"⏰ {now:%H:%M}\n"
-        f"✅ Код подтверждён",
+        f"✅ Код подтверждён\n\n"
+        f"📋 Меню",
         reply_markup=MAIN_MENU,
     )
 
     await notify.notify_shift_opened(
-        employee_name=actor.full_name,
+        employee_name=employee_name,
         point_name=point_name,
         opened_at_str=f"{now:%H:%M}",
+        geo_ok=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Close shift
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data == "shift:close")
+async def cb_shift_close(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    async with SessionLocal() as session:
+        actor = await ensure_actor(callback, session)
+        if not actor:
+            return
+
+        shift_repo = ShiftRepo(session)
+        shift = await shift_repo.get_open_shift(actor.id)
+        if not shift:
+            await callback.answer("⚠️ Нет открытой смены.", show_alert=True)
+            return
+
+        point_repo = PointRepo(session)
+        point = await point_repo.get_by_id(shift.point_id)
+        point_name = point.name if point else f"Точка #{shift.point_id}"
+
+        now = datetime.now(TZ).replace(tzinfo=None)
+        closed_shift = await shift_repo.close_shift(
+            shift=shift,
+            closed_at=now,
+            close_lat=0.0,
+            close_lon=0.0,
+            close_distance_m=0.0,
+            close_geo_status=GeoStatus.OK,
+            close_approval_status=ApprovalStatus.APPROVED,
+        )
+        employee_name = actor.full_name
+        duration = closed_shift.duration_minutes or 0
+
+    hours, mins = duration // 60, duration % 60
+    dur_str = f"{hours}ч {mins}мин" if hours else f"{mins}мин"
+
+    await callback.message.edit_text(
+        f"⚫️ <b>Смена закрыта!</b>\n\n"
+        f"📍 {point_name}\n"
+        f"⏰ {shift.opened_at:%H:%M} — {now:%H:%M} ({dur_str})\n\n"
+        f"📋 Меню",
+        reply_markup=MAIN_MENU,
+    )
+    await callback.answer()
+
+    await notify.notify_shift_closed(
+        employee_name=employee_name,
+        point_name=point_name,
+        opened_at_str=f"{shift.opened_at:%H:%M}",
+        closed_at_str=f"{now:%H:%M}",
+        duration_minutes=duration,
         geo_ok=True,
     )
 
