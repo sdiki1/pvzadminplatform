@@ -73,12 +73,19 @@
 /* acceptance_amount negative */
 .reception-table td.cell-negative { background: #fee2e2 !important; }
 .reception-table .cell-input.val-negative { color: #b91c1c; font-weight: 600; }
+/* avg column */
+.td-avg { background: #f0fdf4 !important; font-weight: 700; color: #166534; padding: 0 8px; }
 .row-items    .row-label { color: #1d4ed8; }
 .row-clients  .row-label { color: #065f46; }
 .row-accept   .row-label { color: #7c3aed; }
 .month-nav { display: flex; align-items: center; gap: 1rem; }
 .sum-row td { background: #f0fdf4; font-weight: 700; color: #166534; }
 .sum-row .row-label { background: #f0fdf4; color: #166534; }
+/* chart modal */
+#chartModalBackdrop {display:none;position:fixed;inset:0;z-index:1050;background:rgba(0,0,0,.4);backdrop-filter:blur(2px)}
+#chartModal {display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1055;
+    background:#fff;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.22);padding:1.5rem;
+    width:min(95vw,860px);max-height:90vh;overflow-y:auto}
 </style>
 {% endblock %}
 
@@ -105,6 +112,15 @@
         <a href="/reception?point_id={{ point_id }}&year={{ next_year }}&month={{ next_month }}"
            class="btn btn-sm btn-outline-secondary"><i class="bi bi-chevron-right"></i></a>
     </div>
+    <div class="d-flex gap-2">
+        <a href="/reception/export?point_id={{ point_id }}&year={{ year }}&month={{ month }}"
+           class="btn btn-sm btn-outline-success">
+            <i class="bi bi-file-earmark-excel me-1"></i>Excel
+        </a>
+        <button class="btn btn-sm btn-outline-primary" onclick="openChart()">
+            <i class="bi bi-bar-chart-line me-1"></i>График
+        </button>
+    </div>
     <div id="saveStatus" class="small text-muted" style="min-width:120px"></div>
 </div>
 
@@ -121,10 +137,14 @@
             </th>
             {% endfor %}
             <th style="min-width:70px;background:#1e293b">Итого</th>
+            <th style="min-width:80px;background:#166534">В среднем<br><span style="font-weight:400;font-size:10px">/день</span></th>
         </tr>
     </thead>
     <tbody>
         {# Row 1: items_given #}
+        {% set items_vals = grid | selectattr('items_given', 'ne', none) | map(attribute='items_given') | list %}
+        {% set items_sum = items_vals | sum %}
+        {% set items_cnt = items_vals | length %}
         <tr class="row-items">
             <td class="row-label"><i class="bi bi-box-seam me-1"></i>Товаров отдали</td>
             {% for cell in grid %}
@@ -138,10 +158,16 @@
             </td>
             {% endfor %}
             <td class="sum-cell" id="sum_items_given" style="font-weight:700;background:#eff6ff">
-                {{ grid | selectattr('items_given', 'ne', none) | map(attribute='items_given') | sum }}
+                {{ items_sum if items_cnt else '' }}
+            </td>
+            <td class="td-avg" id="avg_items_given">
+                {% if items_cnt %}{{ "%.1f"|format(items_sum / items_cnt) }}{% endif %}
             </td>
         </tr>
         {# Row 2: clients_count #}
+        {% set clients_vals = grid | selectattr('clients_count', 'ne', none) | map(attribute='clients_count') | list %}
+        {% set clients_sum = clients_vals | sum %}
+        {% set clients_cnt = clients_vals | length %}
         <tr class="row-clients">
             <td class="row-label"><i class="bi bi-people me-1"></i>Клиентов в день</td>
             {% for cell in grid %}
@@ -155,7 +181,10 @@
             </td>
             {% endfor %}
             <td id="sum_clients_count" style="font-weight:700;background:#eff6ff">
-                {{ grid | selectattr('clients_count', 'ne', none) | map(attribute='clients_count') | sum }}
+                {{ clients_sum if clients_cnt else '' }}
+            </td>
+            <td class="td-avg" id="avg_clients_count">
+                {% if clients_cnt %}{{ "%.1f"|format(clients_sum / clients_cnt) }}{% endif %}
             </td>
         </tr>
         {# Row 3: acceptance_amount #}
@@ -176,6 +205,7 @@
                 {% for cell in grid %}{% if cell.acceptance_amount is not none %}{% set total.v = total.v + cell.acceptance_amount %}{% endif %}{% endfor %}
                 {{ '%.2f' % total.v }}
             </td>
+            <td class="td-avg" style="background:#fdf4ff;color:#7c3aed">—</td>
         </tr>
     </tbody>
 </table>
@@ -184,9 +214,38 @@
 <div class="text-muted small mt-2">
     <i class="bi bi-info-circle me-1"></i>Кликните на ячейку для редактирования. Навигация: <kbd>→</kbd><kbd>←</kbd> по дням, <kbd>↑</kbd><kbd>↓</kbd> между строками, <kbd>Enter</kbd> — следующий день, <kbd>Esc</kbd> — выход. Значение сохраняется автоматически.
 </div>
+
+{# ── Chart modal ── #}
+<div id="chartModalBackdrop" onclick="closeChart()"></div>
+<div id="chartModal">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-bar-chart-line me-2 text-primary"></i>График по точке за 12 месяцев</h6>
+        <button class="btn-close" onclick="closeChart()"></button>
+    </div>
+    <div class="d-flex gap-3 mb-3 align-items-center">
+        <select id="chartPointSelect" class="form-select form-select-sm" style="max-width:260px">
+            {% for p in points %}
+            <option value="{{ p.id }}" {% if p.id == point_id %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+        </select>
+        <select id="chartMonths" class="form-select form-select-sm" style="max-width:120px">
+            <option value="6">6 мес.</option>
+            <option value="12" selected>12 мес.</option>
+            <option value="24">24 мес.</option>
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="loadChart()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Обновить
+        </button>
+    </div>
+    <div style="position:relative;height:320px">
+        <canvas id="receptionChart"></canvas>
+    </div>
+    <div id="chartStats" class="mt-3 d-flex flex-wrap gap-3"></div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 var TODAY = '{{ today_str }}';
 var statusEl = document.getElementById('saveStatus');
@@ -218,10 +277,15 @@ function colorizeAll() {
 function recalcSums() {
     ['items_given', 'clients_count'].forEach(function(field) {
         var inputs = document.querySelectorAll('[data-field="' + field + '"]');
-        var sum = 0;
-        inputs.forEach(function(el) { sum += parseInt(el.value || '0') || 0; });
-        var el = document.getElementById('sum_' + field);
-        if (el) el.textContent = sum || '';
+        var sum = 0, cnt = 0;
+        inputs.forEach(function(el) {
+            var v = parseInt(el.value || '') ;
+            if (!isNaN(v) && el.value.trim() !== '') { sum += v; cnt++; }
+        });
+        var sumEl = document.getElementById('sum_' + field);
+        if (sumEl) sumEl.textContent = cnt ? sum : '';
+        var avgEl = document.getElementById('avg_' + field);
+        if (avgEl) avgEl.textContent = cnt ? (sum / cnt).toFixed(1) : '';
     });
     var inputs = document.querySelectorAll('[data-field="acceptance_amount"]');
     var sum = 0;
@@ -276,7 +340,6 @@ document.querySelectorAll('.cell-input').forEach(function(input) {
 
         if (e.key === 'ArrowRight' || e.key === 'Enter') {
             e.preventDefault();
-            // next date, same field
             var row = Array.from(document.querySelectorAll('.cell-input[data-field="' + field + '"]'));
             var idx = row.indexOf(this);
             var target = row[idx + 1];
@@ -291,7 +354,6 @@ document.querySelectorAll('.cell-input').forEach(function(input) {
 
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
-            // next field, same date
             var fi = FIELDS.indexOf(field);
             if (fi < FIELDS.length - 1) {
                 var next = document.querySelector('.cell-input[data-field="' + FIELDS[fi + 1] + '"][data-date="' + date + '"]');
@@ -300,7 +362,6 @@ document.querySelectorAll('.cell-input').forEach(function(input) {
 
         } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            // prev field, same date
             var fi = FIELDS.indexOf(field);
             if (fi > 0) {
                 var prev = document.querySelector('.cell-input[data-field="' + FIELDS[fi - 1] + '"][data-date="' + date + '"]');
@@ -314,5 +375,113 @@ document.querySelectorAll('.cell-input').forEach(function(input) {
 });
 
 colorizeAll();
+
+/* ── Chart ── */
+var chartInstance = null;
+
+function openChart() {
+    document.getElementById('chartModalBackdrop').style.display = 'block';
+    document.getElementById('chartModal').style.display = 'block';
+    if (!chartInstance) loadChart();
+}
+
+function closeChart() {
+    document.getElementById('chartModalBackdrop').style.display = 'none';
+    document.getElementById('chartModal').style.display = 'none';
+}
+
+function loadChart() {
+    var pid    = document.getElementById('chartPointSelect').value;
+    var months = document.getElementById('chartMonths').value;
+    fetch('/reception/chart-data?point_id=' + pid + '&months=' + months)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var labels      = data.map(function(d) { return d.label; });
+        var avgItems    = data.map(function(d) { return d.avg_items; });
+        var avgClients  = data.map(function(d) { return d.avg_clients; });
+
+        if (chartInstance) chartInstance.destroy();
+
+        var ctx = document.getElementById('receptionChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Среднее товаров/день',
+                        data: avgItems,
+                        backgroundColor: 'rgba(59,130,246,0.7)',
+                        borderColor: '#2563eb',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: 'Среднее клиентов/день',
+                        data: avgClients,
+                        type: 'line',
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16,185,129,0.15)',
+                        borderWidth: 2,
+                        pointRadius: 4,
+                        tension: 0.3,
+                        fill: true,
+                        yAxisID: 'y2',
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                var v = ctx.parsed.y;
+                                return ctx.dataset.label + ': ' + (v !== null ? v.toFixed(1) : '—');
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        title: { display: true, text: 'Товаров/день' },
+                        beginAtZero: true,
+                    },
+                    y2: {
+                        type: 'linear',
+                        position: 'right',
+                        title: { display: true, text: 'Клиентов/день' },
+                        beginAtZero: true,
+                        grid: { drawOnChartArea: false },
+                    },
+                },
+            },
+        });
+
+        // Summary stats below chart
+        var nonNull = data.filter(function(d) { return d.avg_items !== null; });
+        var statsEl = document.getElementById('chartStats');
+        if (nonNull.length) {
+            var avgAll = nonNull.reduce(function(s,d) { return s + d.avg_items; }, 0) / nonNull.length;
+            var maxM   = nonNull.reduce(function(a,b) { return a.avg_items > b.avg_items ? a : b; });
+            var minM   = nonNull.reduce(function(a,b) { return a.avg_items < b.avg_items ? a : b; });
+            statsEl.innerHTML =
+                '<div class="badge bg-primary-subtle text-primary-emphasis p-2 fs-6">Среднее за период: <b>' + avgAll.toFixed(1) + '</b> товаров/день</div>' +
+                '<div class="badge bg-success-subtle text-success-emphasis p-2 fs-6">Лучший месяц: <b>' + maxM.label + '</b> (' + maxM.avg_items.toFixed(1) + ')</div>' +
+                '<div class="badge bg-danger-subtle text-danger-emphasis p-2 fs-6">Слабый месяц: <b>' + minM.label + '</b> (' + minM.avg_items.toFixed(1) + ')</div>';
+        } else {
+            statsEl.innerHTML = '<span class="text-muted small">Нет данных за выбранный период</span>';
+        }
+    });
+}
+
+document.getElementById('chartPointSelect').addEventListener('change', loadChart);
+document.getElementById('chartMonths').addEventListener('change', loadChart);
 </script>
 {% endblock %}
