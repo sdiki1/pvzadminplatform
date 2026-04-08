@@ -17,6 +17,7 @@ from app.db.models import (
     MotivationSource,
     PayrollItem,
     PlannedShift,
+    ReceptionStat,
     Shift,
     User,
 )
@@ -156,6 +157,18 @@ class PayrollService:
         dispute_records = await self.motivation_repo.list_between_source(MotivationSource.DISPUTE, period_start, period_end)
         adjustments = await self.adjustment_repo.list_for_period(period_start, period_end)
 
+        reception_stats_result = await self.session.execute(
+            select(ReceptionStat).where(
+                ReceptionStat.stat_date >= period_start,
+                ReceptionStat.stat_date <= period_end,
+            )
+        )
+        reception_stats: dict[tuple, Decimal] = {
+            (r.point_id, r.stat_date): Decimal(r.acceptance_amount or 0)
+            for r in reception_stats_result.scalars().all()
+            if r.acceptance_amount is not None
+        }
+
         shift_hours_by_user = defaultdict(lambda: ZERO)
         shifts_count_by_user = defaultdict(int)
         base_by_user = defaultdict(lambda: ZERO)
@@ -196,15 +209,42 @@ class PayrollService:
         issued_count_by_user = defaultdict(lambda: ZERO)
         tickets_by_user = defaultdict(lambda: ZERO)
 
+        # Distribute reception_stats.acceptance_amount among employees
+        # proportionally by minutes worked that day at that point.
+        for (point_id, stat_date), acceptance in reception_stats.items():
+            if acceptance <= 0:
+                continue
+            day_shifts = shifts_by_day_point.get((stat_date, point_id), [])
+            if not day_shifts:
+                continue
+            total_minutes = sum(max(s.duration_minutes or 0, 1) for s in day_shifts)
+            if total_minutes <= 0:
+                continue
+            for shift in day_shifts:
+                share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
+                motivation_by_user[shift.user_id] += acceptance * share
+
+        # issued_count and tickets still come from motivation_records
         for rec in main_records:
-            self._distribute_main_record(
-                record=rec,
-                shifts_by_day_point=shifts_by_day_point,
-                user_id_by_last_name=user_id_by_last_name,
-                motivation_by_user=motivation_by_user,
-                issued_count_by_user=issued_count_by_user,
-                tickets_by_user=tickets_by_user,
-            )
+            issued = Decimal(rec.issued_items_count or 0)
+            tickets = Decimal(rec.tickets_count or 0)
+            user_id = rec.user_id or self._match_user_id_from_name(rec.manager_name, user_id_by_last_name)
+            if user_id:
+                issued_count_by_user[user_id] += issued
+                tickets_by_user[user_id] += tickets
+                continue
+            if not rec.point_id:
+                continue
+            day_shifts = shifts_by_day_point.get((rec.record_date, rec.point_id), [])
+            if not day_shifts:
+                continue
+            total_minutes = sum(max(s.duration_minutes or 0, 1) for s in day_shifts)
+            if total_minutes <= 0:
+                continue
+            for shift in day_shifts:
+                share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
+                issued_count_by_user[shift.user_id] += issued * share
+                tickets_by_user[shift.user_id] += tickets * share
 
         stuck_deduction_by_user = defaultdict(lambda: ZERO)
         substitution_deduction_by_user = defaultdict(lambda: ZERO)
@@ -397,43 +437,6 @@ class PayrollService:
         if is_ozon:
             return Decimal("1900")
         return hourly_rate * hours
-
-    def _distribute_main_record(
-        self,
-        record,
-        shifts_by_day_point,
-        user_id_by_last_name,
-        motivation_by_user,
-        issued_count_by_user,
-        tickets_by_user,
-    ) -> None:
-        user_id = record.user_id or self._match_user_id_from_name(record.manager_name, user_id_by_last_name)
-        acceptance = Decimal(record.acceptance_amount_rub or 0)
-        issued = Decimal(record.issued_items_count or 0)
-        tickets = Decimal(record.tickets_count or 0)
-
-        if user_id:
-            motivation_by_user[user_id] += acceptance
-            issued_count_by_user[user_id] += issued
-            tickets_by_user[user_id] += tickets
-            return
-
-        if not record.point_id:
-            return
-
-        day_shifts = shifts_by_day_point.get((record.record_date, record.point_id), [])
-        if not day_shifts:
-            return
-
-        total_minutes = sum(max(s.duration_minutes or 0, 1) for s in day_shifts)
-        if total_minutes <= 0:
-            return
-
-        for shift in day_shifts:
-            share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
-            motivation_by_user[shift.user_id] += acceptance * share
-            issued_count_by_user[shift.user_id] += issued * share
-            tickets_by_user[shift.user_id] += tickets * share
 
     @staticmethod
     def _match_user_id_from_name(name: str | None, user_id_by_last_name: dict[str, int]) -> int | None:
