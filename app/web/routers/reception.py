@@ -151,3 +151,218 @@ async def save_cell(
 
     await db.commit()
     return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Chart data — monthly averages for last N months
+# ---------------------------------------------------------------------------
+
+MONTH_NAMES_RU = ["Янв","Фев","Мар","Апр","Май","Июн",
+                  "Июл","Авг","Сен","Окт","Ноя","Дек"]
+
+
+@router.get("/chart-data")
+async def reception_chart_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+    point_id: int = 0,
+    months: int = 12,
+):
+    today = date.today()
+    results = []
+    for i in range(months - 1, -1, -1):
+        m = today.month - i
+        y = today.year
+        while m <= 0:
+            m += 12
+            y -= 1
+        _, days_in_month = calendar.monthrange(y, m)
+        stats = (await db.execute(
+            select(ReceptionStat).where(
+                ReceptionStat.point_id == point_id,
+                ReceptionStat.stat_date >= date(y, m, 1),
+                ReceptionStat.stat_date <= date(y, m, days_in_month),
+            )
+        )).scalars().all()
+
+        items_vals   = [s.items_given for s in stats if s.items_given is not None]
+        clients_vals = [s.clients_count for s in stats if s.clients_count is not None]
+        accept_vals  = [float(s.acceptance_amount) for s in stats if s.acceptance_amount is not None]
+
+        results.append({
+            "label":       f"{MONTH_NAMES_RU[m - 1]} {y}",
+            "avg_items":   round(sum(items_vals) / len(items_vals), 1) if items_vals else None,
+            "avg_clients": round(sum(clients_vals) / len(clients_vals), 1) if clients_vals else None,
+            "total_items":   sum(items_vals) if items_vals else None,
+            "total_accept":  round(sum(accept_vals), 2) if accept_vals else None,
+        })
+
+    return JSONResponse(results)
+
+
+# ---------------------------------------------------------------------------
+# Excel export — current month table
+# ---------------------------------------------------------------------------
+
+@router.get("/export")
+async def export_excel(
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+    point_id: int = 0,
+    year: int = 0,
+    month: int = 0,
+):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    today = date.today()
+    if not year:
+        year = today.year
+    if not month:
+        month = today.month
+
+    point = (await db.execute(select(Point).where(Point.id == point_id))).scalar_one_or_none()
+    point_name = point.name if point else f"point_{point_id}"
+
+    _, days_in_month = calendar.monthrange(year, month)
+    dates = [date(year, month, d) for d in range(1, days_in_month + 1)]
+
+    stats_result = await db.execute(
+        select(ReceptionStat).where(
+            ReceptionStat.point_id == point_id,
+            ReceptionStat.stat_date >= date(year, month, 1),
+            ReceptionStat.stat_date <= date(year, month, days_in_month),
+        )
+    )
+    stats_by_date = {s.stat_date: s for s in stats_result.scalars().all()}
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    month_names_full = ["Январь","Февраль","Март","Апрель","Май","Июнь",
+                        "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"]
+    ws.title = f"{month_names_full[month - 1]} {year}"
+
+    # Styles
+    hdr_fill  = PatternFill("solid", fgColor="1E293B")
+    hdr_font  = Font(color="FFFFFF", bold=True, size=10)
+    lbl_fill  = PatternFill("solid", fgColor="F8FAFC")
+    lbl_font  = Font(bold=True, size=10)
+    sum_fill  = PatternFill("solid", fgColor="EFF6FF")
+    avg_fill  = PatternFill("solid", fgColor="F0FDF4")
+    warn_fill = PatternFill("solid", fgColor="FEF9C3")
+    alrt_fill = PatternFill("solid", fgColor="FEE2E2")
+    neg_fill  = PatternFill("solid", fgColor="FEE2E2")
+    neg_font  = Font(color="B91C1C", bold=True, size=10)
+    thin_border = Border(
+        left=Side(style='thin', color='E2E8F0'),
+        right=Side(style='thin', color='E2E8F0'),
+        top=Side(style='thin', color='E2E8F0'),
+        bottom=Side(style='thin', color='E2E8F0'),
+    )
+    center = Alignment(horizontal='center', vertical='center')
+
+    day_names_ru = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"]
+
+    # Title row
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=days_in_month + 3)
+    title_cell = ws.cell(1, 1, f"Статистика приёмки — {point_name} — {month_names_full[month-1]} {year}")
+    title_cell.font = Font(bold=True, size=12)
+    title_cell.alignment = center
+
+    # Header row (row 2): label | 1…N | Итого | Среднее/день
+    ws.cell(2, 1, "Показатель").fill = hdr_fill
+    ws.cell(2, 1).font = hdr_font
+    ws.cell(2, 1).alignment = center
+    ws.column_dimensions['A'].width = 22
+
+    for idx, d in enumerate(dates, start=2):
+        col = idx
+        cell = ws.cell(2, col, f"{d.day}\n{day_names_ru[d.weekday()]}")
+        cell.fill = hdr_fill
+        cell.font = hdr_font
+        cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws.column_dimensions[get_column_letter(col)].width = 6
+
+    sum_col = days_in_month + 2
+    avg_col = days_in_month + 3
+    ws.cell(2, sum_col, "Итого").fill = hdr_fill
+    ws.cell(2, sum_col).font = hdr_font
+    ws.cell(2, sum_col).alignment = center
+    ws.column_dimensions[get_column_letter(sum_col)].width = 9
+    ws.cell(2, avg_col, "Среднее\n/день").fill = hdr_fill
+    ws.cell(2, avg_col).font = hdr_font
+    ws.cell(2, avg_col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+    ws.column_dimensions[get_column_letter(avg_col)].width = 10
+
+    ws.row_dimensions[2].height = 30
+
+    # Data rows
+    row_defs = [
+        ("items_given",        "Товаров отдали",  3),
+        ("clients_count",      "Клиентов в день", 4),
+        ("acceptance_amount",  "Приёмка, ₽",      5),
+    ]
+    for field, label, row in row_defs:
+        ws.cell(row, 1, label).fill = lbl_fill
+        ws.cell(row, 1).font = lbl_font
+        ws.cell(row, 1).border = thin_border
+
+        vals = []
+        for idx, d in enumerate(dates, start=2):
+            s = stats_by_date.get(d)
+            raw = None
+            if s:
+                if field == "acceptance_amount":
+                    raw = float(s.acceptance_amount) if s.acceptance_amount is not None else None
+                else:
+                    raw = getattr(s, field)
+            cell = ws.cell(row, idx)
+            if raw is not None:
+                cell.value = raw
+                vals.append(raw)
+                # Coloring
+                if field == "items_given":
+                    if raw > 500:
+                        cell.fill = alrt_fill
+                    elif raw > 350:
+                        cell.fill = warn_fill
+                elif field == "acceptance_amount" and raw < 0:
+                    cell.fill = neg_fill
+                    cell.font = neg_font
+            cell.alignment = center
+            cell.border = thin_border
+            if field == "acceptance_amount":
+                cell.number_format = '#,##0.00'
+
+        # Итого
+        total = sum(vals) if vals else None
+        sum_cell = ws.cell(row, sum_col)
+        sum_cell.value = total
+        sum_cell.fill = sum_fill
+        sum_cell.font = Font(bold=True, size=10)
+        sum_cell.alignment = center
+        sum_cell.border = thin_border
+        if field == "acceptance_amount":
+            sum_cell.number_format = '#,##0.00'
+
+        # Среднее/день
+        avg_cell = ws.cell(row, avg_col)
+        if vals and field != "acceptance_amount":
+            avg_cell.value = round(sum(vals) / len(vals), 1)
+            avg_cell.fill = avg_fill
+            avg_cell.font = Font(bold=True, size=10)
+        else:
+            avg_cell.value = None
+        avg_cell.alignment = center
+        avg_cell.border = thin_border
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"reception_{point_id}_{year}_{month:02d}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
