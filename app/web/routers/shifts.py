@@ -226,6 +226,7 @@ async def shift_calendar(
         "points": points,
         "users": users,
         "reserve_mode": False,
+        "is_superadmin": "superadmin" in set(current_user.roles),
     })
 
 
@@ -249,6 +250,7 @@ async def reserve_calendar(
         "points": points,
         "users": users,
         "reserve_mode": True,
+        "is_superadmin": "superadmin" in set(current_user.roles),
     })
 
 
@@ -764,5 +766,23 @@ async def edit_shift_api(
     if "notes" in data:
         shift.notes = str(data["notes"]).strip() or None
 
+    await db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.post("/api/shift/{shift_id}/delete")
+async def delete_shift_api(
+    shift_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    if "superadmin" not in set(current_user.roles):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    shift = (await db.execute(select(Shift).where(Shift.id == shift_id))).scalar_one_or_none()
+    if not shift:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    await db.delete(shift)
     await db.commit()
     return JSONResponse({"ok": True})

@@ -330,11 +330,20 @@
             <input type="text" id="editNotes" class="form-control form-control-sm" placeholder="необязательно">
         </div>
     </div>
-    <div class="d-flex gap-2 justify-content-end mt-3">
-        <button class="btn btn-outline-secondary btn-sm" id="editShiftCancel">Отмена</button>
-        <button class="btn btn-primary btn-sm" id="editShiftSave">
-            <i class="bi bi-check2 me-1"></i>Сохранить
+    <div class="d-flex gap-2 justify-content-between align-items-center mt-3">
+        {% if is_superadmin %}
+        <button class="btn btn-outline-danger btn-sm" id="editShiftDelete">
+            <i class="bi bi-trash me-1"></i>Удалить
         </button>
+        {% else %}
+        <span></span>
+        {% endif %}
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" id="editShiftCancel">Отмена</button>
+            <button class="btn btn-primary btn-sm" id="editShiftSave">
+                <i class="bi bi-check2 me-1"></i>Сохранить
+            </button>
+        </div>
     </div>
     <div id="editShiftError" class="text-danger small mt-2" style="display:none"></div>
 </div>
@@ -822,6 +831,30 @@
             errEl.style.display = 'block';
         });
     });
+
+    /* ── Delete actual shift (superadmin only) ── */
+    {% if is_superadmin %}
+    document.getElementById('editShiftDelete').addEventListener('click', function () {
+        if (!editShiftId) return;
+        if (!confirm('Удалить смену #' + editShiftId + '? Это действие необратимо.')) return;
+        var errEl = document.getElementById('editShiftError');
+        fetch('/shifts/api/shift/' + editShiftId + '/delete', { method: 'POST' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            if (data.ok) {
+                closeEditShift();
+                calendar.refetchEvents();
+            } else {
+                errEl.textContent = data.error === 'forbidden' ? 'Недостаточно прав' : (data.error || 'Ошибка');
+                errEl.style.display = 'block';
+            }
+        })
+        .catch(function () {
+            errEl.textContent = 'Сетевая ошибка';
+            errEl.style.display = 'block';
+        });
+    });
+    {% endif %}
 
     /* ── Delete planned shift ── */
     function deletePlanned(plannedId) {
