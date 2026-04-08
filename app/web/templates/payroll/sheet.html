@@ -74,10 +74,24 @@
                 <td class="label">Количество смен</td>
                 <td class="amount">{{ item.shifts_count }}</td>
             </tr>
+            {% set hourly_rows = shift_rows | selectattr('basis', 'equalto', 'Почасовая часть') | list %}
+            {% if hourly_rows %}
             <tr>
-                <td class="label">Отработано часов</td>
-                <td class="amount">{{ "%.1f"|format(item.hours_total|float) }}</td>
+                <td class="label">Почасовые выходы</td>
+                <td class="amount">
+                    {% for hr in hourly_rows %}
+                    {{ hr.shift_date.strftime('%d.%m') }} — {{ "%.1f"|format(hr.hours|float) }} ч{% if not loop.last %}<br>{% endif %}
+                    {% endfor %}
+                </td>
             </tr>
+            {% endif %}
+            {% set flat_count = shift_rows | rejectattr('basis', 'equalto', 'Почасовая часть') | list | length %}
+            {% if flat_count > 0 %}
+            <tr>
+                <td class="label">Смены по ставке</td>
+                <td class="amount">{{ flat_count }} шт.</td>
+            </tr>
+            {% endif %}
             <tr>
                 <td colspan="2"><hr class="my-1"></td>
             </tr>
