@@ -973,8 +973,36 @@
                 document.getElementById('popupBonus').textContent = extras.join(', ');
                 notesRow.style.display    = p.notes ? '' : 'none';
                 document.getElementById('popupNotes').textContent = p.notes || '';
-                actionsEl.innerHTML = '<button class="btn btn-sm btn-outline-danger w-100" id="btnDeletePlanned">'
-                    + '<i class="bi bi-trash me-1"></i>Удалить бронь</button>';
+                var shiftBtnLabel = p.linked_shift_id
+                    ? '<i class="bi bi-pencil me-1"></i>Редактировать смену'
+                    : '<i class="bi bi-plus-circle me-1"></i>Создать фактическую смену';
+                actionsEl.innerHTML =
+                    '<div class="d-flex flex-column gap-2 w-100">'
+                    + '<button class="btn btn-sm btn-outline-primary w-100" id="btnShiftFromPlanned">' + shiftBtnLabel + '</button>'
+                    + '<button class="btn btn-sm btn-outline-danger w-100" id="btnDeletePlanned"><i class="bi bi-trash me-1"></i>Удалить бронь</button>'
+                    + '</div>';
+                document.getElementById('btnShiftFromPlanned').addEventListener('click', function () {
+                    if (p.linked_shift_id) {
+                        // Edit existing actual shift
+                        fetch('/shifts/api/shift/' + p.linked_shift_id)
+                        .then(function(r){ return r.json(); })
+                        .then(function(sd){
+                            openEditShift(p.linked_shift_id, sd, niceDateStr);
+                        });
+                    } else {
+                        // Create mode — pre-fill from planned
+                        openCreateShift({
+                            user_id:    p.user_id,
+                            point_id:   p.point_id,
+                            shift_date: dateStr,
+                            opened_at:  p.start_time || '',
+                            closed_at:  p.end_time   || '',
+                            state:      'closed',
+                            notes:      '',
+                            employee:   p.employee || '',
+                        }, niceDateStr);
+                    }
+                });
                 document.getElementById('btnDeletePlanned').addEventListener('click', function () {
                     deletePlanned(p.planned_id);
                 });
