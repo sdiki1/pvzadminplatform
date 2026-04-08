@@ -784,6 +784,79 @@ async def edit_shift_api(
     return JSONResponse({"ok": True})
 
 
+@router.post("/api/shift/create")
+async def create_shift_api(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    if not _can_manage_all_schedule(current_user):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+
+    data = await request.json()
+
+    user_id = _parse_int(data.get("user_id"), 0)
+    point_id = _parse_int(data.get("point_id"), 0)
+    if not user_id or not point_id:
+        return JSONResponse({"error": "user_id and point_id required"}, status_code=400)
+
+    try:
+        shift_date = date.fromisoformat(str(data.get("shift_date", ""))[:10])
+    except (ValueError, TypeError):
+        return JSONResponse({"error": "invalid shift_date"}, status_code=400)
+
+    from datetime import datetime as dt_cls
+    from app.db.models import ShiftState, GeoStatus as GS, ApprovalStatus as AS
+
+    opened_at = None
+    closed_at = None
+    open_hhmm = str(data.get("opened_at", "")).strip()
+    close_hhmm = str(data.get("closed_at", "")).strip()
+
+    if open_hhmm and ":" in open_hhmm:
+        try:
+            h, m = map(int, open_hhmm.split(":"))
+            opened_at = dt_cls(shift_date.year, shift_date.month, shift_date.day, h, m)
+        except ValueError:
+            pass
+
+    if close_hhmm and ":" in close_hhmm:
+        try:
+            h, m = map(int, close_hhmm.split(":"))
+            base = opened_at or dt_cls(shift_date.year, shift_date.month, shift_date.day)
+            closed_at = base.replace(hour=h, minute=m, second=0, microsecond=0)
+        except ValueError:
+            pass
+
+    new_state_raw = str(data.get("state", "closed")).strip()
+    new_state = ShiftState.OPEN if new_state_raw == "open" else ShiftState.CLOSED
+
+    duration_minutes = None
+    if opened_at and closed_at:
+        diff = (closed_at - opened_at).total_seconds()
+        duration_minutes = max(0, int(diff / 60))
+
+    shift = Shift(
+        user_id=user_id,
+        point_id=point_id,
+        shift_date=shift_date,
+        state=new_state,
+        opened_at=opened_at,
+        open_lat=0.0,
+        open_lon=0.0,
+        open_distance_m=0,
+        open_geo_status=GS.OK,
+        open_approval_status=AS.APPROVED,
+        closed_at=closed_at,
+        duration_minutes=duration_minutes,
+        notes=str(data.get("notes", "")).strip() or None,
+    )
+    db.add(shift)
+    await db.commit()
+    await db.refresh(shift)
+    return JSONResponse({"ok": True, "shift_id": shift.id})
+
+
 @router.post("/api/shift/{shift_id}/delete")
 async def delete_shift_api(
     shift_id: int,
