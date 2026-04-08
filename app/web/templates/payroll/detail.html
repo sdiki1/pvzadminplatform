@@ -12,13 +12,21 @@
         </p>
     </div>
     {% if can_manage_payroll %}
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 align-items-center">
         <a href="/payroll/{{ run.id }}/export" class="btn btn-success">
             <i class="bi bi-file-earmark-excel"></i> Сводная XLSX
         </a>
         <a href="/payroll/{{ run.id }}/export-sheets" class="btn btn-outline-success">
             <i class="bi bi-file-earmark-excel"></i> Расчётные листы XLSX
         </a>
+        {% if current_user.roles and 'superadmin' in current_user.roles %}
+        <form method="post" action="/payroll/{{ run.id }}/delete"
+              onsubmit="return confirm('Удалить ведомость #{{ run.id }}? Все расчёты будут удалены. Это действие необратимо.')">
+            <button type="submit" class="btn btn-outline-danger">
+                <i class="bi bi-trash"></i> Удалить ведомость
+            </button>
+        </form>
+        {% endif %}
     </div>
     {% endif %}
 </div>

@@ -427,6 +427,10 @@ def _collect_user_inputs_from_form(form) -> dict[str, dict[str, str]]:
         issued_raw = str(form.get(f"issued_bonus_rub_{uid_str}", "")).strip().replace(",", ".")
         rating_raw = str(form.get(f"rating_bonus_rub_{uid_str}", "")).strip().replace(",", ".")
         debt_raw = str(form.get(f"debt_adjustment_rub_{uid_str}", "")).strip().replace(",", ".")
+        # Empty rating_bonus = auto-calculate (round to 100)
+        # "auto" sentinel also means auto
+        if rating_raw in ("", "auto"):
+            rating_raw = ""
 
         user_inputs[uid_str] = {
             "issued_bonus_rub": issued_raw,
@@ -887,3 +891,22 @@ async def export_employee_sheets_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/{run_id}/delete")
+async def delete_payroll_run(
+    run_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    if "superadmin" not in set(current_user.roles):
+        raise HTTPException(status_code=403, detail="Only superadmin can delete payroll runs")
+
+    run = (await db.execute(select(PayrollRun).where(PayrollRun.id == run_id))).scalar_one_or_none()
+    if not run:
+        return RedirectResponse(url="/payroll", status_code=302)
+
+    # PayrollItems are deleted via CASCADE on the DB side
+    await db.delete(run)
+    await db.commit()
+    return RedirectResponse(url="/payroll", status_code=302)

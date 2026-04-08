@@ -76,8 +76,17 @@
                                         <input type="hidden" name="employee_ids" value="{{ row.user_id }}">
                                     </td>
                                     <td class="text-end">{{ "%.2f"|format(row.speed_bonus_rub|float) }}</td>
-                                    <td class="text-end" style="min-width:120px;">
-                                        <input type="number" class="form-control form-control-sm text-end rating-input" name="rating_bonus_rub_{{ row.user_id }}" step="0.01" value="0.00">
+                                    <td style="min-width:140px;">
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" class="form-control form-control-sm text-end rating-input"
+                                                   name="rating_bonus_rub_{{ row.user_id }}"
+                                                   step="1" placeholder="авто"
+                                                   title="Оставьте пустым для авто-расчёта (до кратного 100 ₽)">
+                                            <button type="button" class="btn btn-outline-secondary btn-auto-rating px-1"
+                                                    title="Сбросить в авто">
+                                                <i class="bi bi-magic"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                     <td class="text-end" style="min-width:120px;">
                                         <input type="number" class="form-control form-control-sm text-end issue-input" name="issued_bonus_rub_{{ row.user_id }}" step="0.01" value="{{ '%.2f'|format(row.issued_bonus_auto_rub|float) }}">
@@ -155,6 +164,12 @@
         return n.toFixed(2);
     }
 
+    function autoRating(totalWithoutRating) {
+        var rounded = Math.round(totalWithoutRating);
+        var remainder = ((rounded % 100) + 100) % 100;
+        return remainder === 0 ? 0 : 100 - remainder;
+    }
+
     function recalcRows() {
         var rows = document.querySelectorAll('#payrollPreviewTable tbody tr.payroll-row');
         var grandSubtotal = 0;
@@ -168,8 +183,24 @@
             var debtInput = row.querySelector('.debt-input');
 
             var issue = toNumber(issueInput ? issueInput.value : 0);
-            var rating = toNumber(ratingInput ? ratingInput.value : 0);
             var debt = toNumber(debtInput ? debtInput.value : 0);
+
+            var rating;
+            var ratingVal = ratingInput ? ratingInput.value.trim() : '';
+            if (ratingVal === '') {
+                // Auto mode: compute to round to nearest 100
+                rating = autoRating(base + issue + debt);
+                if (ratingInput) {
+                    ratingInput.classList.add('text-muted');
+                    ratingInput.setAttribute('placeholder', 'авто (' + rating.toFixed(0) + ')');
+                }
+            } else {
+                rating = toNumber(ratingVal);
+                if (ratingInput) {
+                    ratingInput.classList.remove('text-muted');
+                    ratingInput.setAttribute('placeholder', 'авто');
+                }
+            }
 
             var subtotal = base + issue + rating;
             var total = subtotal + debt;
@@ -177,7 +208,12 @@
             var subtotalCell = row.querySelector('.subtotal-cell');
             var totalCell = row.querySelector('.total-cell');
             if (subtotalCell) subtotalCell.textContent = fmt(subtotal);
-            if (totalCell) totalCell.textContent = fmt(total);
+            if (totalCell) {
+                totalCell.textContent = fmt(total);
+                // Highlight if total is multiple of 100
+                var isRound = Math.abs(Math.round(total) % 100) === 0;
+                totalCell.classList.toggle('text-success', isRound);
+            }
 
             grandSubtotal += subtotal;
             grandDebt += debt;
@@ -198,6 +234,17 @@
 
     document.querySelectorAll('.issue-input, .rating-input, .debt-input').forEach(function (el) {
         el.addEventListener('input', recalcRows);
+    });
+
+    // "Авто" reset button
+    document.querySelectorAll('.btn-auto-rating').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var ratingInput = btn.closest('.input-group').querySelector('.rating-input');
+            if (ratingInput) {
+                ratingInput.value = '';
+                recalcRows();
+            }
+        });
     });
 
     recalcRows();

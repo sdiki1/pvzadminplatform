@@ -38,7 +38,7 @@ ZERO = Decimal("0")
 @dataclass
 class PayrollUserInput:
     issued_bonus_rub: Decimal | None = None
-    rating_bonus_rub: Decimal = ZERO
+    rating_bonus_rub: Decimal | None = None   # None = auto (round to 100)
     debt_adjustment_rub: Decimal = ZERO
 
 
@@ -329,10 +329,11 @@ class PayrollService:
             motivation = motivation_by_user[user.id]
             auto_issued_bonus = issued_bonus_by_user[user.id]
             issued_bonus = user_input.issued_bonus_rub if user_input and user_input.issued_bonus_rub is not None else auto_issued_bonus
-            rating_bonus = user_input.rating_bonus_rub if user_input else ZERO
 
             reserve_bonus = reserve_bonus_by_user[user.id]
             substitution_bonus = substitution_bonus_by_user[user.id]
+
+            debt_adjustment = user_input.debt_adjustment_rub if user_input else ZERO
 
             stuck_deduction = stuck_deduction_by_user[user.id]
             substitution_deduction = substitution_deduction_by_user[user.id]
@@ -341,7 +342,18 @@ class PayrollService:
 
             manager_bonus = manager_bonus_by_user[user.id]
             adjustment = adjustments_by_user[user.id]
-            debt_adjustment = user_input.debt_adjustment_rub if user_input else ZERO
+
+            # Auto rating bonus: round the total up to nearest 100 ₽
+            if user_input and user_input.rating_bonus_rub is not None:
+                rating_bonus = user_input.rating_bonus_rub
+            else:
+                _total_without_rating = self._money_round(
+                    base + motivation + issued_bonus + reserve_bonus
+                    + substitution_bonus - dispute + manager_bonus + adjustment
+                    + debt_adjustment
+                )
+                _remainder = int(_total_without_rating) % 100
+                rating_bonus = ZERO if _remainder == 0 else Decimal(100 - _remainder)
 
             subtotal = (
                 base
@@ -533,9 +545,14 @@ class PayrollService:
             if issued_raw is not None and str(issued_raw).strip() != "":
                 issued_value = self._to_decimal(issued_raw, default=ZERO)
 
+            rating_raw = raw_input.get("rating_bonus_rub")
+            rating_value: Decimal | None = None  # None = auto
+            if rating_raw is not None and str(rating_raw).strip() != "":
+                rating_value = self._to_decimal(rating_raw, default=ZERO)
+
             normalized[user_id] = PayrollUserInput(
                 issued_bonus_rub=issued_value,
-                rating_bonus_rub=self._to_decimal(raw_input.get("rating_bonus_rub"), default=ZERO),
+                rating_bonus_rub=rating_value,
                 debt_adjustment_rub=self._to_decimal(raw_input.get("debt_adjustment_rub"), default=ZERO),
             )
 

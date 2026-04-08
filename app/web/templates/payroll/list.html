@@ -30,8 +30,16 @@
                 <td>{{ run.period_start.strftime('%d.%m.%Y') }} — {{ run.period_end.strftime('%d.%m.%Y') }}</td>
                 <td>{{ run.payout_day }}-е число</td>
                 <td>{{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}</td>
-                <td class="text-end">
+                <td class="text-end d-flex gap-2 justify-content-end">
                     <a href="/payroll/{{ run.id }}" class="btn btn-sm btn-outline-primary">Открыть</a>
+                    {% if current_user.roles and 'superadmin' in current_user.roles %}
+                    <form method="post" action="/payroll/{{ run.id }}/delete"
+                          onsubmit="return confirm('Удалить ведомость за {{ run.period_start.strftime('%d.%m.%Y') }} — {{ run.period_end.strftime('%d.%m.%Y') }}? Это действие необратимо.')">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </form>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
