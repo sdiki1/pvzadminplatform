@@ -9,6 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
+from app.bot import notify as bot_notify
 from app.bot.handlers import admin_router, employee_router
 from app.config import get_settings
 from app.db.session import SessionLocal, init_db
@@ -37,6 +38,13 @@ async def run() -> None:
         dp = Dispatcher(storage=MemoryStorage())
         dp.include_router(employee_router)
         dp.include_router(admin_router)
+
+        # Wire notification service
+        bot_notify.set_bot(bot)
+        from app.bot.helpers import admin_telegram_ids
+        async with SessionLocal() as _s:
+            _ids = await admin_telegram_ids(_s, settings)
+        bot_notify.set_admin_ids(_ids)
 
         scheduler = BotScheduler(bot=bot, session_factory=SessionLocal, settings=settings)
         scheduler.start()

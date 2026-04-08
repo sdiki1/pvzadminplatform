@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot import notify as bot_notify
 from app.db.models import Appeal, AppealFeedback, Point, User, WebUser
 from app.utils.parsing import parse_date
 from app.web.deps import can_edit_disputes, get_current_user, get_db, is_restricted_manager
@@ -191,6 +192,20 @@ async def create_appeal(
     )
     db.add(appeal)
     await db.commit()
+    await db.refresh(appeal)
+
+    # Telegram notification
+    point_row = (await db.execute(select(Point).where(Point.id == appeal.point_id))).scalar_one_or_none()
+    import asyncio
+    asyncio.create_task(bot_notify.notify_appeal_created(
+        point_name=point_row.name if point_row else f"#{appeal.point_id}",
+        appeal_type=appeal.appeal_type,
+        barcode=appeal.barcode,
+        ticket=appeal.ticket_number,
+        amount=str(int(appeal.amount)) if appeal.amount else None,
+        created_by=current_user.email or f"id={current_user.id}",
+    ))
+
     return RedirectResponse(url="/appeals", status_code=302)
 
 
@@ -298,6 +313,7 @@ async def update_appeal(
 
     assigned_manager_raw = form.get("assigned_manager_raw", "").strip() or None
 
+    old_status = item.status
     item.case_date = case_date
     item.point_id = int(form["point_id"])
     item.appeal_type = form.get("appeal_type", "other")
@@ -316,6 +332,20 @@ async def update_appeal(
     item.result_comment = form.get("result_comment", "").strip() or None
 
     await db.commit()
+
+    # Telegram notification if status changed
+    new_status = item.status
+    if new_status != old_status:
+        point_row = (await db.execute(select(Point).where(Point.id == item.point_id))).scalar_one_or_none()
+        import asyncio
+        asyncio.create_task(bot_notify.notify_appeal_status_changed(
+            point_name=point_row.name if point_row else f"#{item.point_id}",
+            appeal_id=appeal_id,
+            old_status=old_status,
+            new_status=new_status,
+            changed_by=current_user.email or f"id={current_user.id}",
+        ))
+
     return RedirectResponse(url=f"/appeals/{appeal_id}", status_code=302)
 
 

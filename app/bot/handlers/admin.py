@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, FSInputFile, Message
+from aiogram.types import FSInputFile, Message
 
 from app.bot.context import ensure_actor
 from app.bot.helpers import parse_date_iso, parse_decimal
-from app.bot.keyboards import points_keyboard
+from app.bot.keyboards import geofence_approve_keyboard, points_keyboard
 from app.bot.states import ExpenseState
 from app.config import get_settings
-from app.db.models import AdjustmentType, ApprovalStatus, BrandEnum, RoleEnum
+from app.db.models import AdjustmentType, BrandEnum, RoleEnum
 from app.db.repositories import (
     AssignmentRepo,
     ConfirmationRepo,
@@ -88,65 +88,30 @@ async def admin_help(message: Message) -> None:
         return
 
     text = (
-        "Админ-команды:\n"
-        "/admin_list_users\n"
+        "⚙️ <b>Админ-панель</b>\n\n"
+        "Используйте кнопку <b>⚙️ Панель администратора</b> в главном меню для быстрых действий.\n\n"
+        "<b>Команды:</b>\n"
+        "/admin_list_users — список сотрудников\n"
         "/admin_add_user tg_id;role;ФИО;phone;manager_bonus_type\n"
         "/admin_delete_user tg_id\n"
         "/admin_restore_user tg_id\n"
-        "/admin_list_points\n"
+        "/admin_list_points — список точек\n"
         "/admin_add_point name;address;brand;lat;lon;radius;work_start;work_end\n"
         "/admin_delete_point point_id\n"
         "/admin_restore_point point_id\n"
         "/admin_seed_lesnoy_points [lat lon radius]\n"
-        "/admin_assign_rate tg_id;point_name;shift_rate;hourly_rate;is_primary (ставки сотрудника)\n"
+        "/admin_assign_rate tg_id;point_name;shift_rate;hourly_rate;is_primary\n"
         "/admin_add_adjustment tg_id;period_start;period_end;type;amount;comment\n"
         "/admin_sync [YYYY-MM-DD YYYY-MM-DD]\n"
         "/admin_payroll <10|25> [YYYY-MM-DD ref_date] [critical_code]\n"
         "/admin_report YYYY-MM-DD YYYY-MM-DD\n"
         "/admin_expenses YYYY-MM-DD YYYY-MM-DD\n"
         "/admin_confirmations [YYYY-MM-DD]\n"
-        "/admin_geo_pending"
+        "/admin_geo_pending\n"
+        "/admin_expense — добавить расход (интерактивно)"
     )
-    await message.answer(text)
+    await message.answer(text, parse_mode="HTML")
 
-
-@router.message(F.text == "Админ: управление")
-async def admin_manage_button(message: Message) -> None:
-    actor = await _ensure_admin_message(message)
-    if not actor:
-        return
-
-    await message.answer(
-        "Управление сотрудниками и точками:\n"
-        "/admin_list_users\n"
-        "/admin_add_user tg_id;role;ФИО;phone;manager_bonus_type\n"
-        "/admin_delete_user tg_id\n"
-        "/admin_restore_user tg_id\n"
-        "/admin_list_points\n"
-        "/admin_add_point name;address;brand;lat;lon;radius;work_start;work_end\n"
-        "/admin_delete_point point_id\n"
-        "/admin_restore_point point_id\n"
-        "/admin_seed_lesnoy_points [lat lon radius]"
-    )
-
-
-@router.message(F.text == "Админ: синхронизация")
-async def admin_sync_button(message: Message) -> None:
-    actor = await _ensure_admin_message(message)
-    if not actor:
-        return
-
-    tz = ZoneInfo(settings.timezone)
-    today = datetime.now(tz).date()
-    period_start = date(today.year, today.month, 1)
-
-    async with SessionLocal() as session:
-        sync_service = GoogleSyncService(session, settings)
-        summary = await sync_service.sync_period(period_start, today)
-
-    await message.answer(
-        f"Синхронизация завершена: main={summary.main_imported}, disputes={summary.disputes_imported}"
-    )
 
 
 @router.message(Command("admin_sync"))
@@ -182,13 +147,6 @@ async def admin_sync(message: Message) -> None:
         f"main={summary.main_imported}, disputes={summary.disputes_imported}"
     )
 
-
-@router.message(F.text == "Админ: расчет ЗП")
-async def admin_payroll_button(message: Message) -> None:
-    actor = await _ensure_admin_message(message)
-    if not actor:
-        return
-    await message.answer("Используйте: /admin_payroll <10|25> [YYYY-MM-DD ref_date] [critical_code]")
 
 
 @router.message(Command("admin_payroll"))
@@ -263,19 +221,6 @@ async def admin_payroll(message: Message) -> None:
     await message.answer_document(FSInputFile(summary_file))
     await message.answer_document(FSInputFile(sheets_file))
 
-
-@router.message(F.text == "Админ: отчеты")
-async def admin_reports_button(message: Message) -> None:
-    actor = await _ensure_admin_message(message)
-    if not actor:
-        return
-
-    await message.answer(
-        "Используйте:\n"
-        "/admin_report YYYY-MM-DD YYYY-MM-DD - смены и расходы\n"
-        "/admin_expenses YYYY-MM-DD YYYY-MM-DD - только расходы\n"
-        "/admin_confirmations [YYYY-MM-DD] - подтверждения"
-    )
 
 
 @router.message(Command("admin_report"))
@@ -787,7 +732,7 @@ async def admin_add_adjustment(message: Message) -> None:
     await message.answer("Корректировка сохранена")
 
 
-@router.message(F.text == "Админ: расходы")
+@router.message(Command("admin_expense"))
 async def expense_start(message: Message, state: FSMContext) -> None:
     actor = await _ensure_admin_message(message)
     if not actor:
@@ -917,52 +862,4 @@ async def admin_geo_pending(message: Message) -> None:
             )
 
 
-@router.callback_query(F.data.startswith("geoapprove:"))
-async def geoapprove(callback: CallbackQuery) -> None:
-    actor = await _ensure_admin_callback(callback)
-    if not actor:
-        return
-
-    parts = callback.data.split(":")
-    if len(parts) != 6:
-        await callback.answer("Некорректные данные", show_alert=True)
-        return
-
-    _, exception_id_raw, shift_id_raw, event, decision = parts
-
-    try:
-        exception_id = int(exception_id_raw)
-        shift_id = int(shift_id_raw)
-    except ValueError:
-        await callback.answer("Некорректный id", show_alert=True)
-        return
-
-    status = ApprovalStatus.APPROVED if decision == "ok" else ApprovalStatus.REJECTED
-
-    async with SessionLocal() as session:
-        ge_repo = GeofenceExceptionRepo(session)
-        shift_repo = ShiftRepo(session)
-        user_repo = UserRepo(session)
-
-        await ge_repo.set_status(exception_id, status, reviewed_by=actor.id)
-        if event == "open":
-            await shift_repo.update_open_approval(shift_id, status)
-        elif event == "close":
-            await shift_repo.update_close_approval(shift_id, status)
-
-        shift = await shift_repo.get_by_id(shift_id)
-        if shift:
-            user = await user_repo.get_by_id(shift.user_id)
-            if user:
-                try:
-                    await callback.bot.send_message(
-                        user.telegram_id,
-                        f"Администратор {('подтвердил' if status == ApprovalStatus.APPROVED else 'отклонил')} гео-исключение по смене #{shift_id}",
-                    )
-                except Exception:
-                    pass
-
-    await callback.message.answer(
-        f"Решение сохранено: exception_id={exception_id} -> {status.value}"
-    )
-    await callback.answer()
+# geoapprove callback is handled in employee.py router

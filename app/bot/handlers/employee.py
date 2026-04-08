@@ -1,27 +1,26 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
+from app.bot import notify
 from app.bot.context import ensure_actor
-from app.bot.helpers import admin_telegram_ids
 from app.bot.keyboards import (
-    menu_for_role,
-    points_keyboard,
+    MAIN_MENU,
+    geofence_approve_keyboard,
+    remove_keyboard,
     request_location_keyboard,
-    tomorrow_confirm_keyboard,
+    shift_open_points_keyboard,
 )
 from app.bot.states import CloseShiftState, OpenShiftState
 from app.config import get_settings
-from app.db.models import ApprovalStatus, ConfirmationStatus, GeoStatus, RoleEnum
+from app.db.models import ApprovalStatus, GeoStatus, PlannedShift, RoleEnum
 from app.db.repositories import (
-    AssignmentRepo,
-    ConfirmationRepo,
     GeofenceExceptionRepo,
     PointRepo,
     ShiftRepo,
@@ -29,157 +28,177 @@ from app.db.repositories import (
 )
 from app.db.session import SessionLocal
 from app.services.geofence import GeofenceService
-from app.services.payroll import PayrollService
-from app.utils.text import dt, money
+from sqlalchemy import select
 
 router = Router(name="employee")
 settings = get_settings()
+TZ = ZoneInfo(settings.timezone)
 
 
-async def _notify_admins(message: Message, text: str, reply_markup=None) -> None:
-    async with SessionLocal() as session:
-        ids = await admin_telegram_ids(session, settings)
-
-    for tg_id in ids:
-        try:
-            await message.bot.send_message(tg_id, text, reply_markup=reply_markup)
-        except Exception:
-            continue
-
+# ---------------------------------------------------------------------------
+# /start  — show main menu
+# ---------------------------------------------------------------------------
 
 @router.message(CommandStart())
-async def start(message: Message) -> None:
+async def cmd_start(message: Message, state: FSMContext) -> None:
+    await state.clear()
     async with SessionLocal() as session:
         user_repo = UserRepo(session)
         user = await user_repo.get_by_tg_id(message.from_user.id)
 
         if not user and message.from_user.id in settings.admin_ids:
-            full_name = " ".join(filter(None, [message.from_user.last_name, message.from_user.first_name]))
+            full_name = " ".join(filter(None, [
+                message.from_user.last_name,
+                message.from_user.first_name,
+            ]))
             user = await user_repo.create_or_update(
                 telegram_id=message.from_user.id,
                 full_name=full_name or str(message.from_user.id),
                 role=RoleEnum.ADMIN,
             )
 
-        if not user:
-            await message.answer(
-                "Вы не зарегистрированы в системе. "
-                f"Передайте администратору ваш Telegram ID: `{message.from_user.id}`",
-                parse_mode="Markdown",
-            )
-            return
+    if not user:
+        await message.answer(
+            "👋 Вы не зарегистрированы.\n"
+            f"Передайте администратору ваш Telegram ID: <code>{message.from_user.id}</code>"
+        )
+        return
 
-        await message.answer("Главное меню", reply_markup=menu_for_role(user.role))
+    if not user.is_active:
+        await message.answer("⛔️ Аккаунт деактивирован. Обратитесь к администратору.")
+        return
 
-
-@router.message(F.text == "Подтвердить выход на завтра")
-async def ask_tomorrow_confirmation(message: Message) -> None:
-    tz = ZoneInfo(settings.timezone)
-    target_date = (datetime.now(tz) + timedelta(days=1)).date()
     await message.answer(
-        f"Подтвердите выход на {target_date:%d.%m.%Y}",
-        reply_markup=tomorrow_confirm_keyboard(target_date.isoformat()),
+        f"👋 Привет, <b>{user.full_name.split()[0]}</b>!",
+        reply_markup=MAIN_MENU,
     )
 
 
-@router.callback_query(F.data.startswith("confirm:"))
-async def confirm_tomorrow(callback: CallbackQuery) -> None:
-    parts = callback.data.split(":")
-    if len(parts) != 3:
-        await callback.answer("Некорректные данные", show_alert=True)
-        return
+@router.message(Command("menu"))
+async def cmd_menu(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("📋 Меню", reply_markup=MAIN_MENU)
 
-    _, target_date_iso, status_raw = parts
-    status = {
-        "yes": ConfirmationStatus.YES,
-        "no": ConfirmationStatus.NO,
-        "unknown": ConfirmationStatus.UNKNOWN,
-    }.get(status_raw)
-    if not status:
-        await callback.answer("Некорректный статус", show_alert=True)
-        return
 
+# ---------------------------------------------------------------------------
+# Cancel any FSM
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data == "shift:cancel")
+async def cb_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.message.edit_text("❌ Отменено", reply_markup=None)
+    await callback.message.answer("📋 Меню", reply_markup=MAIN_MENU)
+    await callback.answer()
+
+
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("❌ Действие отменено", reply_markup=remove_keyboard())
+    await message.answer("📋 Меню", reply_markup=MAIN_MENU)
+
+
+# ---------------------------------------------------------------------------
+# Open shift
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data == "shift:open")
+async def cb_shift_open(callback: CallbackQuery, state: FSMContext) -> None:
     async with SessionLocal() as session:
         actor = await ensure_actor(callback, session)
         if not actor:
             return
 
-        confirmation_repo = ConfirmationRepo(session)
-        target_date = date.fromisoformat(target_date_iso)
-        await confirmation_repo.upsert(actor.id, target_date, status)
+        shift_repo = ShiftRepo(session)
+        if await shift_repo.get_open_shift(actor.id):
+            await callback.answer("⚠️ У вас уже есть открытая смена!", show_alert=True)
+            return
 
-    await callback.message.answer(f"Сохранено: {target_date:%d.%m.%Y} -> {status.value}")
+        today = datetime.now(TZ).date()
+        today_planned = (await session.execute(
+            select(PlannedShift).where(
+                PlannedShift.user_id == actor.id,
+                PlannedShift.shift_date == today,
+            )
+        )).scalars().all()
+
+        if not today_planned:
+            await callback.answer(
+                "На сегодня нет запланированных смен.\nОбратитесь к администратору.",
+                show_alert=True,
+            )
+            return
+
+        point_repo = PointRepo(session)
+        points_map = {p.id: p for p in await point_repo.list_all()}
+
+    await state.set_state(OpenShiftState.waiting_point)
+    await callback.message.edit_text(
+        "🟢 <b>Открыть смену</b>\n\nВыберите точку:",
+        reply_markup=shift_open_points_keyboard(today_planned, points_map),
+    )
     await callback.answer()
 
 
-@router.message(F.text == "Открыть смену")
-async def open_shift_start(message: Message, state: FSMContext) -> None:
-    async with SessionLocal() as session:
-        actor = await ensure_actor(message, session)
-        if not actor:
-            return
-
-        shift_repo = ShiftRepo(session)
-        if await shift_repo.get_open_shift(actor.id):
-            await message.answer("У вас уже есть открытая смена.")
-            return
-
-        assignment_repo = AssignmentRepo(session)
-        point_repo = PointRepo(session)
-
-        assignments = await assignment_repo.list_user_assignments(actor.id)
-        points = []
-        for assignment in assignments:
-            p = await point_repo.get_by_id(assignment.point_id)
-            if p and p.is_active:
-                points.append(p)
-
-        if not points:
-            await message.answer("Нет доступных точек. Обратитесь к администратору.")
-            return
-
-    await state.set_state(OpenShiftState.waiting_point)
-    await message.answer("Выберите ПВЗ:", reply_markup=points_keyboard(points, "openpoint"))
-
-
 @router.callback_query(OpenShiftState.waiting_point, F.data.startswith("openpoint:"))
-async def open_shift_point(callback: CallbackQuery, state: FSMContext) -> None:
-    point_id = int(callback.data.split(":", maxsplit=1)[1])
+async def cb_open_point_selected(callback: CallbackQuery, state: FSMContext) -> None:
+    point_id = int(callback.data.split(":")[1])
     await state.update_data(point_id=point_id)
     await state.set_state(OpenShiftState.waiting_location)
-    await callback.message.answer("Отправьте геолокацию для открытия смены", reply_markup=request_location_keyboard())
+    await callback.message.edit_text(
+        "📍 <b>Геолокация</b>\n\nОтправьте местоположение для открытия смены.",
+        reply_markup=None,
+    )
+    await callback.message.answer(
+        "👇 Нажмите кнопку ниже:",
+        reply_markup=request_location_keyboard(),
+    )
     await callback.answer()
 
 
 @router.message(OpenShiftState.waiting_location, F.location)
-async def open_shift_location(message: Message, state: FSMContext) -> None:
+async def fsm_open_location(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     point_id = data.get("point_id")
     if not point_id:
         await state.clear()
-        await message.answer("Точка не выбрана. Повторите действие.")
+        await message.answer("⚠️ Ошибка. Начните заново.", reply_markup=remove_keyboard())
         return
 
     async with SessionLocal() as session:
         actor = await ensure_actor(message, session)
         if not actor:
             await state.clear()
+            return
+
+        # Проверяем плановую смену ещё раз
+        today = datetime.now(TZ).date()
+        planned = (await session.execute(
+            select(PlannedShift).where(
+                PlannedShift.user_id == actor.id,
+                PlannedShift.shift_date == today,
+                PlannedShift.point_id == point_id,
+            )
+        )).scalar_one_or_none()
+        if not planned:
+            await state.clear()
+            await message.answer("❌ Плановая смена не найдена.", reply_markup=remove_keyboard())
+            await message.answer("📋 Меню", reply_markup=MAIN_MENU)
             return
 
         point_repo = PointRepo(session)
         point = await point_repo.get_by_id(point_id)
         if not point:
             await state.clear()
-            await message.answer("Точка не найдена")
+            await message.answer("❌ Точка не найдена.", reply_markup=remove_keyboard())
             return
 
-        geo_result = GeofenceService.check(point, message.location.latitude, message.location.longitude)
-        open_approval = ApprovalStatus.APPROVED if geo_result.status == GeoStatus.OK else ApprovalStatus.PENDING
+        geo = GeofenceService.check(point, message.location.latitude, message.location.longitude)
+        approval = ApprovalStatus.APPROVED if geo.status == GeoStatus.OK else ApprovalStatus.PENDING
 
         shift_repo = ShiftRepo(session)
-        tz = ZoneInfo(settings.timezone)
-        opened_at = datetime.now(tz).replace(tzinfo=None)
-
+        opened_at = datetime.now(TZ).replace(tzinfo=None)
         shift = await shift_repo.create_open_shift(
             user_id=actor.id,
             point_id=point.id,
@@ -187,63 +206,85 @@ async def open_shift_location(message: Message, state: FSMContext) -> None:
             opened_at=opened_at,
             open_lat=message.location.latitude,
             open_lon=message.location.longitude,
-            open_distance_m=geo_result.distance_m,
-            open_geo_status=geo_result.status,
-            open_approval_status=open_approval,
+            open_distance_m=geo.distance_m,
+            open_geo_status=geo.status,
+            open_approval_status=approval,
         )
 
-        if geo_result.status == GeoStatus.OUTSIDE:
+        if geo.status == GeoStatus.OUTSIDE:
             ge_repo = GeofenceExceptionRepo(session)
-            ge = await ge_repo.create(shift.id, "open", geo_result.distance_m)
-            from app.bot.keyboards import geofence_approve_keyboard
-
-            await _notify_admins(
-                message,
-                (
-                    f"Отклонение гео при открытии смены\n"
-                    f"Сотрудник: {actor.full_name}\n"
-                    f"ПВЗ: {point.name}\n"
-                    f"Distance: {geo_result.distance_m:.1f} м"
-                ),
+            ge = await ge_repo.create(shift.id, "open", geo.distance_m)
+            await notify.notify_admins(
+                f"⚠️ <b>Отклонение геолокации при открытии</b>\n\n"
+                f"👤 {actor.full_name}\n"
+                f"📍 {point.name}\n"
+                f"📏 {geo.distance_m:.0f} м от точки",
                 reply_markup=geofence_approve_keyboard(ge.id, shift.id, "open"),
             )
 
     await state.clear()
+    geo_line = "✅ геолокация подтверждена" if geo.status == GeoStatus.OK else f"⚠️ геолокация вне радиуса ({geo.distance_m:.0f} м) — на проверке"
     await message.answer(
-        (
-            f"Смена открыта #{shift.id}\n"
-            f"ПВЗ: {point.name}\n"
-            f"Время: {shift.opened_at:%d.%m.%Y %H:%M}\n"
-            f"Гео: {'OK' if geo_result.status == GeoStatus.OK else 'требует подтверждения админа'}"
-        )
+        f"🟢 <b>Смена открыта!</b>\n\n"
+        f"📍 {point.name}\n"
+        f"⏰ {opened_at:%H:%M}\n"
+        f"{geo_line}",
+        reply_markup=remove_keyboard(),
+    )
+    await message.answer("📋 Меню", reply_markup=MAIN_MENU)
+
+    # Уведомляем администраторов
+    await notify.notify_shift_opened(
+        employee_name=actor.full_name,
+        point_name=point.name,
+        opened_at_str=f"{opened_at:%H:%M}",
+        geo_ok=(geo.status == GeoStatus.OK),
     )
 
 
-@router.message(F.text == "Закрыть смену")
-async def close_shift_start(message: Message, state: FSMContext) -> None:
+# ---------------------------------------------------------------------------
+# Close shift
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data == "shift:close")
+async def cb_shift_close(callback: CallbackQuery, state: FSMContext) -> None:
     async with SessionLocal() as session:
-        actor = await ensure_actor(message, session)
+        actor = await ensure_actor(callback, session)
         if not actor:
             return
 
         shift_repo = ShiftRepo(session)
         shift = await shift_repo.get_open_shift(actor.id)
         if not shift:
-            await message.answer("У вас нет открытой смены")
+            await callback.answer("⚠️ Нет открытой смены.", show_alert=True)
             return
+
+        point_repo = PointRepo(session)
+        point = await point_repo.get_by_id(shift.point_id)
 
     await state.set_state(CloseShiftState.waiting_location)
     await state.update_data(shift_id=shift.id)
-    await message.answer("Отправьте геолокацию для закрытия смены", reply_markup=request_location_keyboard())
+    await callback.message.edit_text(
+        f"🔴 <b>Закрыть смену</b>\n\n"
+        f"📍 {point.name if point else '—'}\n"
+        f"⏰ Открыта с {shift.opened_at:%H:%M}\n\n"
+        "Отправьте геолокацию для закрытия.",
+        reply_markup=None,
+    )
+    await callback.message.answer(
+        "👇 Нажмите кнопку ниже:",
+        reply_markup=request_location_keyboard(),
+    )
+    await callback.answer()
 
 
 @router.message(CloseShiftState.waiting_location, F.location)
-async def close_shift_location(message: Message, state: FSMContext) -> None:
+async def fsm_close_location(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     shift_id = data.get("shift_id")
     if not shift_id:
         await state.clear()
-        await message.answer("Смена не найдена. Повторите действие.")
+        await message.answer("⚠️ Ошибка. Начните заново.", reply_markup=remove_keyboard())
         return
 
     async with SessionLocal() as session:
@@ -253,111 +294,123 @@ async def close_shift_location(message: Message, state: FSMContext) -> None:
             return
 
         shift_repo = ShiftRepo(session)
-        point_repo = PointRepo(session)
         ge_repo = GeofenceExceptionRepo(session)
+        point_repo = PointRepo(session)
 
         shift = await shift_repo.get_by_id(shift_id)
         if not shift or shift.user_id != actor.id:
             await state.clear()
-            await message.answer("Смена не найдена.")
+            await message.answer("❌ Смена не найдена.", reply_markup=remove_keyboard())
             return
 
         point = await point_repo.get_by_id(shift.point_id)
         if not point:
             await state.clear()
-            await message.answer("Точка не найдена.")
+            await message.answer("❌ Точка не найдена.", reply_markup=remove_keyboard())
             return
 
-        geo_result = GeofenceService.check(point, message.location.latitude, message.location.longitude)
-        close_approval = ApprovalStatus.APPROVED if geo_result.status == GeoStatus.OK else ApprovalStatus.PENDING
-
-        tz = ZoneInfo(settings.timezone)
-        closed_at = datetime.now(tz).replace(tzinfo=None)
+        geo = GeofenceService.check(point, message.location.latitude, message.location.longitude)
+        approval = ApprovalStatus.APPROVED if geo.status == GeoStatus.OK else ApprovalStatus.PENDING
+        closed_at = datetime.now(TZ).replace(tzinfo=None)
 
         shift = await shift_repo.close_shift(
             shift=shift,
             closed_at=closed_at,
             close_lat=message.location.latitude,
             close_lon=message.location.longitude,
-            close_distance_m=geo_result.distance_m,
-            close_geo_status=geo_result.status,
-            close_approval_status=close_approval,
+            close_distance_m=geo.distance_m,
+            close_geo_status=geo.status,
+            close_approval_status=approval,
         )
 
-        if geo_result.status == GeoStatus.OUTSIDE:
-            ge = await ge_repo.create(shift.id, "close", geo_result.distance_m)
-            from app.bot.keyboards import geofence_approve_keyboard
-
-            await _notify_admins(
-                message,
-                (
-                    f"Отклонение гео при закрытии смены\n"
-                    f"Сотрудник: {actor.full_name}\n"
-                    f"ПВЗ: {point.name}\n"
-                    f"Distance: {geo_result.distance_m:.1f} м"
-                ),
+        if geo.status == GeoStatus.OUTSIDE:
+            ge = await ge_repo.create(shift.id, "close", geo.distance_m)
+            await notify.notify_admins(
+                f"⚠️ <b>Отклонение геолокации при закрытии</b>\n\n"
+                f"👤 {actor.full_name}\n"
+                f"📍 {point.name}\n"
+                f"📏 {geo.distance_m:.0f} м от точки",
                 reply_markup=geofence_approve_keyboard(ge.id, shift.id, "close"),
             )
 
     await state.clear()
+    dur = shift.duration_minutes or 0
+    hours, mins = dur // 60, dur % 60
+    dur_str = f"{hours}ч {mins}мин" if hours else f"{mins}мин"
+    geo_line = "✅ геолокация подтверждена" if geo.status == GeoStatus.OK else f"⚠️ геолокация вне радиуса ({geo.distance_m:.0f} м)"
     await message.answer(
-        (
-            f"Смена закрыта #{shift.id}\n"
-            f"Длительность: {shift.duration_minutes or 0} мин\n"
-            f"Гео: {'OK' if geo_result.status == GeoStatus.OK else 'требует подтверждения админа'}"
-        )
+        f"⚫️ <b>Смена закрыта!</b>\n\n"
+        f"📍 {point.name}\n"
+        f"⏰ {shift.opened_at:%H:%M} — {closed_at:%H:%M} ({dur_str})\n"
+        f"{geo_line}",
+        reply_markup=remove_keyboard(),
+    )
+    await message.answer("📋 Меню", reply_markup=MAIN_MENU)
+
+    # Уведомляем администраторов
+    await notify.notify_shift_closed(
+        employee_name=actor.full_name,
+        point_name=point.name,
+        opened_at_str=f"{shift.opened_at:%H:%M}",
+        closed_at_str=f"{closed_at:%H:%M}",
+        duration_minutes=dur,
+        geo_ok=(geo.status == GeoStatus.OK),
     )
 
 
-@router.message(F.text == "Мои смены")
-async def my_shifts(message: Message) -> None:
+# ---------------------------------------------------------------------------
+# Geofence approval — admins press Подтвердить / Отклонить in notifications
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data.startswith("geoapprove:"))
+async def cb_geoapprove(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":")
+    if len(parts) != 5:
+        await callback.answer("Некорректные данные", show_alert=True)
+        return
+
+    _, exc_id_raw, shift_id_raw, event, decision = parts
+    try:
+        exc_id = int(exc_id_raw)
+        shift_id = int(shift_id_raw)
+    except ValueError:
+        await callback.answer("Некорректный id", show_alert=True)
+        return
+
+    status = ApprovalStatus.APPROVED if decision == "ok" else ApprovalStatus.REJECTED
+
     async with SessionLocal() as session:
-        actor = await ensure_actor(message, session)
+        actor = await ensure_actor(callback, session)
         if not actor:
             return
 
+        ge_repo = GeofenceExceptionRepo(session)
         shift_repo = ShiftRepo(session)
-        point_repo = PointRepo(session)
+        user_repo = UserRepo(session)
 
-        shifts = await shift_repo.list_user_shifts(actor.id)
-        if not shifts:
-            await message.answer("Смен пока нет.")
-            return
+        await ge_repo.set_status(exc_id, status, reviewed_by=actor.id)
+        if event == "open":
+            await shift_repo.update_open_approval(shift_id, status)
+        else:
+            await shift_repo.update_close_approval(shift_id, status)
 
-        lines = []
-        for s in shifts:
-            point = await point_repo.get_by_id(s.point_id)
-            point_name = point.name if point else f"id={s.point_id}"
-            lines.append(
-                f"#{s.id} | {s.shift_date:%d.%m} | {point_name} | {s.state.value} | "
-                f"{dt(s.opened_at)} - {dt(s.closed_at)} | {s.duration_minutes or 0} мин"
-            )
+        shift = await shift_repo.get_by_id(shift_id)
+        if shift:
+            employee = await user_repo.get_by_id(shift.user_id)
+            if employee:
+                try:
+                    word = "подтвердил ✅" if status == ApprovalStatus.APPROVED else "отклонил ❌"
+                    await callback.bot.send_message(
+                        employee.telegram_id,
+                        f"👤 Администратор {word} геолокацию по вашей смене.",
+                    )
+                except Exception:
+                    pass
 
-        await message.answer("Последние смены:\n" + "\n".join(lines))
+    icon = "✅" if status == ApprovalStatus.APPROVED else "❌"
+    await callback.answer(f"{icon} Решение сохранено", show_alert=True)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
 
-
-@router.message(F.text == "Моя ЗП")
-async def my_payroll(message: Message) -> None:
-    async with SessionLocal() as session:
-        actor = await ensure_actor(message, session)
-        if not actor:
-            return
-
-        payroll_service = PayrollService(session, settings)
-        item = await payroll_service.latest_for_user(actor.id)
-        if not item:
-            await message.answer("Расчеты ЗП пока не сформированы.")
-            return
-
-        await message.answer(
-            "Последний расчет:\n"
-            f"Смены: {item.shifts_count}\n"
-            f"Часы: {item.hours_total}\n"
-            f"База: {money(item.base_amount_rub)}\n"
-            f"Мотивация: {money(item.motivation_amount_rub)}\n"
-            f"Бонус выдача: {money(item.issued_bonus_rub)}\n"
-            f"Удержания (не оспорено): {money(item.dispute_deduction_rub)}\n"
-            f"Бонус менеджера: {money(item.manager_bonus_rub)}\n"
-            f"Корректировки: {money(item.adjustments_rub)}\n"
-            f"Итого: {money(item.total_amount_rub)}"
-        )

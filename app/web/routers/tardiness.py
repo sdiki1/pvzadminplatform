@@ -160,6 +160,19 @@ async def run_scan(
     created = await _detect_tardiness(db, d_from, d_to, dry_run=False, created_by=current_user.id)
     await db.commit()
 
+    # Send Telegram notifications for each detected tardiness record
+    if created:
+        import asyncio
+        from app.bot import notify as bot_notify
+        for entry in created:
+            asyncio.create_task(bot_notify.notify_tardiness(
+                employee_name=entry["user_name"],
+                point_name=entry["point_name"],
+                shift_date_str=entry["shift_date"].strftime("%d.%m.%Y"),
+                delay_minutes=entry["delay_minutes"],
+                fine_amount=int(entry["fine_amount"]),
+            ))
+
     return RedirectResponse(url=f"/tardiness?date_from={d_from}&date_to={d_to}", status_code=302)
 
 

@@ -5,84 +5,99 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 
-from app.db.models import Point, RoleEnum
+from app.db.models import Point
 
 
-EMPLOYEE_MENU = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="Подтвердить выход на завтра")],
-        [KeyboardButton(text="Открыть смену"), KeyboardButton(text="Закрыть смену")],
-        [KeyboardButton(text="Мои смены"), KeyboardButton(text="Моя ЗП")],
-    ],
-    resize_keyboard=True,
-)
+def _btn(text: str, data: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=data)
 
-ADMIN_MENU = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="Подтвердить выход на завтра")],
-        [KeyboardButton(text="Открыть смену"), KeyboardButton(text="Закрыть смену")],
-        [KeyboardButton(text="Мои смены"), KeyboardButton(text="Моя ЗП")],
-        [KeyboardButton(text="Админ: управление")],
-        [KeyboardButton(text="Админ: отчеты"), KeyboardButton(text="Админ: синхронизация")],
-        [KeyboardButton(text="Админ: расходы"), KeyboardButton(text="Админ: расчет ЗП")],
-    ],
-    resize_keyboard=True,
+
+# ---------------------------------------------------------------------------
+# Main employee menu — just two actions
+# ---------------------------------------------------------------------------
+
+MAIN_MENU = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            _btn("🟢 Открыть смену", "shift:open"),
+            _btn("🔴 Закрыть смену", "shift:close"),
+        ],
+    ]
 )
 
 
-def menu_for_role(role: RoleEnum) -> ReplyKeyboardMarkup:
-    if role == RoleEnum.ADMIN:
-        return ADMIN_MENU
-    return EMPLOYEE_MENU
+# ---------------------------------------------------------------------------
+# Shift open — pick a point from today's planned shifts
+# ---------------------------------------------------------------------------
 
-
-def tomorrow_confirm_keyboard(target_date: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Да", callback_data=f"confirm:{target_date}:yes"),
-                InlineKeyboardButton(text="Нет", callback_data=f"confirm:{target_date}:no"),
-                InlineKeyboardButton(text="Не знаю", callback_data=f"confirm:{target_date}:unknown"),
-            ]
-        ]
-    )
-
-
-def points_keyboard(points: list[Point], action: str) -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = []
-    for p in points:
-        rows.append([InlineKeyboardButton(text=f"{p.name} ({p.address})", callback_data=f"{action}:{p.id}")])
+def shift_open_points_keyboard(planned_shifts, points_map: dict) -> InlineKeyboardMarkup:
+    rows = []
+    for ps in planned_shifts:
+        point = points_map.get(ps.point_id)
+        name = point.name if point else f"Точка #{ps.point_id}"
+        time_str = ""
+        if ps.start_time and ps.end_time:
+            time_str = f"  {ps.start_time:%H:%M}–{ps.end_time:%H:%M}"
+        rows.append([_btn(f"📍 {name}{time_str}", f"openpoint:{ps.point_id}")])
+    rows.append([_btn("❌ Отмена", "shift:cancel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+# ---------------------------------------------------------------------------
+# Location (Telegram requires ReplyKeyboard for location sharing)
+# ---------------------------------------------------------------------------
+
 def request_location_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Отправить геолокацию", request_location=True)]],
+        keyboard=[[KeyboardButton(text="📍 Отправить геолокацию", request_location=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
 
 
+def remove_keyboard() -> ReplyKeyboardRemove:
+    return ReplyKeyboardRemove()
+
+
+# ---------------------------------------------------------------------------
+# Geofence approval — sent to admins
+# ---------------------------------------------------------------------------
+
 def geofence_approve_keyboard(exception_id: int, shift_id: int, event: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(
-                    text="Подтвердить", callback_data=f"geoapprove:{exception_id}:{shift_id}:{event}:ok"
-                ),
-                InlineKeyboardButton(
-                    text="Отклонить", callback_data=f"geoapprove:{exception_id}:{shift_id}:{event}:reject"
-                ),
+                _btn("✅ Подтвердить", f"geoapprove:{exception_id}:{shift_id}:{event}:ok"),
+                _btn("❌ Отклонить", f"geoapprove:{exception_id}:{shift_id}:{event}:reject"),
             ]
         ]
     )
 
 
+# ---------------------------------------------------------------------------
+# Legacy stubs used by admin.py commands (expense flow, etc.)
+# ---------------------------------------------------------------------------
+
+def points_keyboard(points: list[Point], action: str) -> InlineKeyboardMarkup:
+    rows = [[_btn(f"📍 {p.name}", f"{action}:{p.id}")] for p in points]
+    rows.append([_btn("❌ Отмена", "shift:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def critical_confirm_keyboard(action_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Подтвердить действие", callback_data=f"critical:{action_id}")],
-        ]
+        inline_keyboard=[[_btn("✅ Подтвердить действие", f"critical:{action_id}")]]
+    )
+
+
+def tomorrow_confirm_keyboard(target_date: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[
+            _btn("✅ Да", f"confirm:{target_date}:yes"),
+            _btn("❌ Нет", f"confirm:{target_date}:no"),
+            _btn("🤷 Не знаю", f"confirm:{target_date}:unknown"),
+        ]]
     )
