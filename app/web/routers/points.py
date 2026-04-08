@@ -115,6 +115,7 @@ async def create_point(
         address_normalized=form.get("address_normalized", "").strip() or form.get("address", "").strip(),
         code=form.get("code", "").strip() or None,
         comment=form.get("comment", "").strip() or None,
+        email=form.get("email", "").strip() or None,
     )
     if form.get("marketplace_id"):
         point.marketplace_id = int(form["marketplace_id"])
@@ -204,6 +205,7 @@ async def update_point(
     point.address_normalized = form.get("address_normalized", "").strip() or point.address
     point.code = form.get("code", "").strip() or None
     point.comment = form.get("comment", "").strip() or None
+    point.email = form.get("email", "").strip() or None
     if form.get("marketplace_id"):
         point.marketplace_id = int(form["marketplace_id"])
     else:

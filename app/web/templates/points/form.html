@@ -70,6 +70,10 @@
                 <label class="form-label">Конец работы</label>
                 <input type="time" class="form-control" name="work_end" value="{{ item.work_end.strftime('%H:%M') if item and item.work_end else '21:00' }}">
             </div>
+            <div class="col-md-6">
+                <label class="form-label">Email точки <small class="text-muted">(для кодов открытия смены)</small></label>
+                <input type="email" class="form-control" name="email" value="{{ item.email if item and item.email else '' }}" placeholder="pvz@example.com">
+            </div>
             <div class="col-12">
                 <label class="form-label">Комментарий</label>
                 <textarea class="form-control" name="comment" rows="2">{{ item.comment if item and item.comment else '' }}</textarea>

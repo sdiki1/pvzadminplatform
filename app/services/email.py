@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.db.models import EmailConfirmation
+from app.db.models import EmailConfirmation, ShiftOpenCode
 
 log = logging.getLogger(__name__)
 
@@ -101,6 +101,129 @@ class EmailService:
         conf.used = True
         await db.commit()
         return True, conf
+
+    async def send_shift_open_code(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        point_id: int,
+        shift_date,
+        point_email: str,
+        point_name: str,
+        employee_name: str,
+    ) -> str:
+        """Generate a 4-digit code, save to DB and send to point_email. Returns the code."""
+        from sqlalchemy import delete as sa_delete, and_
+        # Invalidate previous unused codes for same user+point+date
+        await db.execute(
+            sa_delete(ShiftOpenCode).where(
+                and_(
+                    ShiftOpenCode.user_id == user_id,
+                    ShiftOpenCode.point_id == point_id,
+                    ShiftOpenCode.shift_date == shift_date,
+                    ShiftOpenCode.used == False,
+                )
+            )
+        )
+
+        code = "".join(random.choices(string.digits, k=4))
+        expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+        record = ShiftOpenCode(
+            user_id=user_id,
+            point_id=point_id,
+            shift_date=shift_date,
+            code=code,
+            used=False,
+            expires_at=expires_at,
+        )
+        db.add(record)
+        await db.commit()
+        await db.refresh(record)
+
+        if self.enabled:
+            await self._send_shift_code_email(point_email, point_name, employee_name, code)
+        else:
+            log.warning("Email not configured — shift code for %s at %s: %s", employee_name, point_name, code)
+
+        return code
+
+    async def verify_shift_open_code(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        point_id: int,
+        shift_date,
+        code: str,
+    ) -> bool:
+        """Returns True and marks code used if valid, False otherwise."""
+        from sqlalchemy import and_
+        result = await db.execute(
+            select(ShiftOpenCode).where(
+                and_(
+                    ShiftOpenCode.user_id == user_id,
+                    ShiftOpenCode.point_id == point_id,
+                    ShiftOpenCode.shift_date == shift_date,
+                    ShiftOpenCode.used == False,
+                    ShiftOpenCode.code == code,
+                )
+            )
+        )
+        record = result.scalar_one_or_none()
+        if not record:
+            return False
+        if record.expires_at < datetime.utcnow():
+            return False
+        record.used = True
+        await db.commit()
+        return True
+
+    async def _send_shift_code_email(
+        self, to_email: str, point_name: str, employee_name: str, code: str
+    ) -> None:
+        s = self.settings
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Код открытия смены: {code}"
+        msg["From"] = s.smtp_from or s.smtp_user
+        msg["To"] = to_email
+
+        text_body = (
+            f"Сотрудник {employee_name} открывает смену на точке «{point_name}».\n\n"
+            f"Код подтверждения: {code}\n\n"
+            f"Код действителен 10 минут.\n"
+            f"Если смена не открывалась — игнорируйте письмо."
+        )
+        html_body = f"""
+        <div style="font-family:Arial,sans-serif;max-width:480px">
+          <h2 style="color:#333">Открытие смены</h2>
+          <p>Сотрудник: <strong>{employee_name}</strong></p>
+          <p>Точка: <strong>{point_name}</strong></p>
+          <p>Код подтверждения:</p>
+          <div style="font-size:40px;font-weight:bold;letter-spacing:12px;
+                      padding:16px 24px;background:#f5f5f5;border-radius:8px;
+                      display:inline-block;margin:12px 0;color:#1e293b">{code}</div>
+          <p style="color:#666;font-size:13px">
+            Код действителен 10 минут.<br>
+            Если смена не открывалась — игнорируйте письмо.
+          </p>
+        </div>
+        """
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        try:
+            await aiosmtplib.send(
+                msg,
+                hostname=s.smtp_host,
+                port=s.smtp_port,
+                username=s.smtp_user,
+                password=s.smtp_password,
+                use_tls=True,
+            )
+            log.info("Shift code email sent to %s (point=%s)", to_email, point_name)
+        except Exception as exc:
+            log.error("Failed to send shift code to %s: %s", to_email, exc)
+            raise
 
     async def _send_email(self, to_email: str, operation: str, code: str) -> None:
         label = OPERATION_LABELS.get(operation, operation)

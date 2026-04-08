@@ -23,6 +23,7 @@ from app.db.models.core import (
     RoleEnum,
     Shift,
     ShiftConfirmation,
+    ShiftOpenCode,
     ShiftState,
     User,
 )
@@ -114,6 +115,7 @@ __all__ = [
     "PayrollRun",
     "PayrollItem",
     "GeofenceException",
+    "ShiftOpenCode",
     # Web
     "WebRoleEnum",
     "WebUser",

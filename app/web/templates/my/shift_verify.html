@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Подтверждение открытия смены{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Открытие смены</h1></div>
+
+<div class="row justify-content-center">
+  <div class="col-md-5 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <div class="text-center mb-4">
+          <div class="fs-1 mb-2">📧</div>
+          <h5 class="card-title">Введите код подтверждения</h5>
+          <p class="text-muted small">
+            На почту точки <strong>{{ point.name }}</strong> отправлен 4-значный код.
+            Введите его ниже.
+          </p>
+        </div>
+
+        {% if error == "invalid" %}
+        <div class="alert alert-danger py-2">
+          <i class="bi bi-x-circle me-1"></i> Неверный или просроченный код. Попробуйте снова.
+        </div>
+        {% elif error == "empty" %}
+        <div class="alert alert-warning py-2">
+          <i class="bi bi-exclamation-circle me-1"></i> Введите код.
+        </div>
+        {% endif %}
+
+        <form method="post" action="/my/shift/open/verify">
+          <input type="hidden" name="point_id" value="{{ point_id }}">
+          <div class="mb-3">
+            <input
+              type="text"
+              name="code"
+              class="form-control form-control-lg text-center fw-bold fs-3 letter-spacing"
+              placeholder="0000"
+              maxlength="4"
+              pattern="\d{4}"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              autofocus
+              style="letter-spacing: 0.5em;"
+            >
+          </div>
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-success btn-lg">
+              <i class="bi bi-check2-circle me-1"></i> Подтвердить
+            </button>
+            <a href="/my" class="btn btn-outline-secondary">
+              <i class="bi bi-x me-1"></i> Отмена
+            </a>
+          </div>
+        </form>
+
+        <hr class="my-3">
+        <p class="text-center text-muted small mb-0">
+          Не получили код?
+          <a href="/my/shift/open/resend?point_id={{ point_id }}">Отправить повторно</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

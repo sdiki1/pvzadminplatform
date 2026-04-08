@@ -10,7 +10,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import EmployeePointAssignment, PlannedShift, Point, Shift, ShiftState, User, WebUser, GeoStatus, ApprovalStatus
+from app.config import get_settings
+from app.db.models import EmployeePointAssignment, PlannedShift, Point, Shift, ShiftState, ShiftOpenCode, User, WebUser, GeoStatus, ApprovalStatus
+from app.services.email import EmailService
 from app.web.deps import get_current_user, get_db
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -137,17 +139,17 @@ async def my_portal(
 
 
 @router.post("/shift/open")
-async def open_shift(
+async def open_shift_request(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
 ):
+    """Step 1: validate request, send code to PVZ email, redirect to code entry."""
     if not current_user.user_id:
         return RedirectResponse(url="/my", status_code=302)
 
-    # Check no open shift already
-    open_shift = await _get_latest_open_shift(db, current_user.user_id)
-    if open_shift:
+    existing = await _get_latest_open_shift(db, current_user.user_id)
+    if existing:
         return RedirectResponse(url="/my", status_code=302)
 
     form = await request.form()
@@ -157,7 +159,6 @@ async def open_shift(
 
     today = date.today()
 
-    # Must have a planned shift for today at this point
     planned = (await db.execute(
         select(PlannedShift).where(
             PlannedShift.user_id == current_user.user_id,
@@ -168,6 +169,99 @@ async def open_shift(
     if not planned:
         return RedirectResponse(url="/my", status_code=302)
 
+    point = (await db.execute(select(Point).where(Point.id == point_id))).scalar_one_or_none()
+    if not point:
+        return RedirectResponse(url="/my", status_code=302)
+
+    if not point.email:
+        # No email on point — open shift directly without code
+        now = datetime.now(TZ).replace(tzinfo=None)
+        shift = Shift(
+            user_id=current_user.user_id,
+            point_id=point_id,
+            shift_date=now.date(),
+            state=ShiftState.OPEN,
+            opened_at=now,
+            open_lat=0.0, open_lon=0.0, open_distance_m=0.0,
+            open_geo_status=GeoStatus.OK,
+            open_approval_status=ApprovalStatus.APPROVED,
+            notes="Открыта через веб-кабинет",
+        )
+        db.add(shift)
+        await db.commit()
+        return RedirectResponse(url="/my", status_code=302)
+
+    # Send code to point email
+    employee = (await db.execute(select(User).where(User.id == current_user.user_id))).scalar_one_or_none()
+    employee_name = employee.full_name if employee else current_user.full_name
+
+    svc = EmailService(get_settings())
+    await svc.send_shift_open_code(
+        db=db,
+        user_id=current_user.user_id,
+        point_id=point_id,
+        shift_date=today,
+        point_email=point.email,
+        point_name=point.name,
+        employee_name=employee_name,
+    )
+
+    return RedirectResponse(url=f"/my/shift/open/verify?point_id={point_id}", status_code=302)
+
+
+@router.get("/shift/open/verify", response_class=HTMLResponse)
+async def open_shift_verify_page(
+    request: Request,
+    point_id: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    if not current_user.user_id or not point_id:
+        return RedirectResponse(url="/my", status_code=302)
+
+    point = (await db.execute(select(Point).where(Point.id == point_id))).scalar_one_or_none()
+    if not point:
+        return RedirectResponse(url="/my", status_code=302)
+
+    return templates.TemplateResponse(request, "my/shift_verify.html", {
+        "current_user": current_user,
+        "active_page": "my",
+        "point": point,
+        "point_id": point_id,
+        "error": request.query_params.get("error"),
+    })
+
+
+@router.post("/shift/open/verify")
+async def open_shift_verify(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    """Step 2: validate code, open shift."""
+    if not current_user.user_id:
+        return RedirectResponse(url="/my", status_code=302)
+
+    form = await request.form()
+    point_id = int(form.get("point_id", 0))
+    code = str(form.get("code", "")).strip()
+
+    if not point_id or not code:
+        return RedirectResponse(url=f"/my/shift/open/verify?point_id={point_id}&error=empty", status_code=302)
+
+    today = date.today()
+    svc = EmailService(get_settings())
+    ok = await svc.verify_shift_open_code(
+        db=db,
+        user_id=current_user.user_id,
+        point_id=point_id,
+        shift_date=today,
+        code=code,
+    )
+    if not ok:
+        return RedirectResponse(url=f"/my/shift/open/verify?point_id={point_id}&error=invalid", status_code=302)
+
+    # Code valid — open shift
     now = datetime.now(TZ).replace(tzinfo=None)
     shift = Shift(
         user_id=current_user.user_id,
@@ -175,16 +269,56 @@ async def open_shift(
         shift_date=now.date(),
         state=ShiftState.OPEN,
         opened_at=now,
-        open_lat=0.0,
-        open_lon=0.0,
-        open_distance_m=0.0,
+        open_lat=0.0, open_lon=0.0, open_distance_m=0.0,
         open_geo_status=GeoStatus.OK,
         open_approval_status=ApprovalStatus.APPROVED,
-        notes="Открыта через веб-кабинет",
+        notes="Открыта через веб-кабинет (код подтверждён)",
     )
     db.add(shift)
     await db.commit()
     return RedirectResponse(url="/my", status_code=302)
+
+
+@router.get("/shift/open/resend")
+async def resend_shift_code(
+    request: Request,
+    point_id: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    """Resend the code to the PVZ email."""
+    if not current_user.user_id or not point_id:
+        return RedirectResponse(url="/my", status_code=302)
+
+    today = date.today()
+    planned = (await db.execute(
+        select(PlannedShift).where(
+            PlannedShift.user_id == current_user.user_id,
+            PlannedShift.shift_date == today,
+            PlannedShift.point_id == point_id,
+        )
+    )).scalar_one_or_none()
+    if not planned:
+        return RedirectResponse(url="/my", status_code=302)
+
+    point = (await db.execute(select(Point).where(Point.id == point_id))).scalar_one_or_none()
+    if not point or not point.email:
+        return RedirectResponse(url="/my", status_code=302)
+
+    employee = (await db.execute(select(User).where(User.id == current_user.user_id))).scalar_one_or_none()
+    employee_name = employee.full_name if employee else current_user.full_name
+
+    svc = EmailService(get_settings())
+    await svc.send_shift_open_code(
+        db=db,
+        user_id=current_user.user_id,
+        point_id=point_id,
+        shift_date=today,
+        point_email=point.email,
+        point_name=point.name,
+        employee_name=employee_name,
+    )
+    return RedirectResponse(url=f"/my/shift/open/verify?point_id={point_id}", status_code=302)
 
 
 @router.post("/shift/close")

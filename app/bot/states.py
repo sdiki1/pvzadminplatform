@@ -3,7 +3,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 class OpenShiftState(StatesGroup):
     waiting_point = State()
-    waiting_location = State()
+    waiting_code = State()
 
 
 class CloseShiftState(StatesGroup):
