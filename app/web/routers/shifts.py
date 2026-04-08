@@ -300,6 +300,19 @@ async def shift_events(
 
     planned = (await db.execute(pq)).scalars().all()
 
+    # Build index: (user_id, shift_date, point_id) -> shift_id for linking planned → actual
+    shifts_index: dict[tuple, int] = {
+        (s.user_id, s.shift_date, s.point_id): s.id for s in shifts
+    }
+    # For reserve mode we don't load actual shifts, so query separately
+    if reserve_mode and planned:
+        planned_dates = list({p.shift_date for p in planned})
+        extra_shifts = (await db.execute(
+            select(Shift).where(Shift.shift_date.in_(planned_dates))
+        )).scalars().all()
+        for s in extra_shifts:
+            shifts_index.setdefault((s.user_id, s.shift_date, s.point_id), s.id)
+
     users_map = {u.id: u for u in (await db.execute(select(User))).scalars().all()}
     points_map = {p.id: p for p in (await db.execute(select(Point))).scalars().all()}
 
@@ -391,6 +404,7 @@ async def shift_events(
                 "start_time": _time_hhmm(p.start_time),
                 "end_time": _time_hhmm(p.end_time),
                 "time_range": time_range or "",
+                "linked_shift_id": shifts_index.get((p.user_id, p.shift_date, p.point_id)),
             },
         })
 
