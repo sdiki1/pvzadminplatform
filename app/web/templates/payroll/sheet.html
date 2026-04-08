@@ -80,16 +80,21 @@
                 <td class="label">Почасовые выходы</td>
                 <td class="amount">
                     {% for hr in hourly_rows %}
-                    {{ hr.shift_date.strftime('%d.%m') }} — {{ "%.1f"|format(hr.hours|float) }} ч{% if not loop.last %}<br>{% endif %}
+                    {{ hr.shift_date.strftime('%d.%m') }} — {{ "%.1f"|format(hr.hours|float) }} ч — {{ "%.2f"|format(hr.amount_rub|float) }} ₽{% if not loop.last %}<br>{% endif %}
                     {% endfor %}
                 </td>
             </tr>
             {% endif %}
-            {% set flat_count = shift_rows | rejectattr('basis', 'equalto', 'Почасовая часть') | list | length %}
-            {% if flat_count > 0 %}
+            {% set flat_rows = shift_rows | rejectattr('basis', 'equalto', 'Почасовая часть') | list %}
+            {% if flat_rows %}
+            {% set flat_total = flat_rows | sum(attribute='amount_rub') %}
+            {% set flat_count = flat_rows | length %}
             <tr>
                 <td class="label">Смены по ставке</td>
-                <td class="amount">{{ flat_count }} шт.</td>
+                <td class="amount">
+                    {{ flat_count }} шт. — {{ "%.2f"|format(flat_total|float) }} ₽
+                    <span class="text-muted">({{ "%.0f"|format((flat_total / flat_count)|float) }} ₽/смена)</span>
+                </td>
             </tr>
             {% endif %}
             <tr>
