@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -109,7 +109,8 @@ async def list_appeals(
         "appeal_types": APPEAL_TYPES,
         "statuses": APPEAL_STATUSES,
         "appeal_type_labels": APPEAL_TYPE_LABELS,
-        "status_labels": APPEAL_STATUS_LABELS})
+        "status_labels": APPEAL_STATUS_LABELS,
+        "can_edit": can_edit_disputes(current_user)})
 
 
 @router.get("/new", response_class=HTMLResponse)
@@ -347,6 +348,52 @@ async def update_appeal(
         ))
 
     return RedirectResponse(url=f"/appeals/{appeal_id}", status_code=302)
+
+
+@router.patch("/{appeal_id}/quick-edit")
+async def quick_edit_appeal(
+    appeal_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: WebUser = Depends(get_current_user),
+):
+    """Inline-edit status and/or charge_to_manager from the list table."""
+    if not can_edit_disputes(current_user):
+        return JSONResponse({"error": "permission denied"}, status_code=403)
+
+    result = await db.execute(select(Appeal).where(Appeal.id == appeal_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    data = await request.json()
+    old_status = item.status
+
+    if "status" in data:
+        new_status = str(data["status"])
+        valid_codes = {code for code, _ in APPEAL_STATUSES}
+        if new_status not in valid_codes:
+            return JSONResponse({"error": "invalid status"}, status_code=400)
+        item.status = new_status
+
+    if "charge_to_manager" in data:
+        item.charge_to_manager = bool(data["charge_to_manager"])
+
+    await db.commit()
+
+    # Notify if status changed
+    if "status" in data and item.status != old_status:
+        point_row = (await db.execute(select(Point).where(Point.id == item.point_id))).scalar_one_or_none()
+        import asyncio
+        asyncio.create_task(bot_notify.notify_appeal_status_changed(
+            point_name=point_row.name if point_row else f"#{item.point_id}",
+            appeal_id=appeal_id,
+            old_status=old_status,
+            new_status=item.status,
+            changed_by=current_user.email or f"id={current_user.id}",
+        ))
+
+    return JSONResponse({"ok": True, "status": item.status, "charge_to_manager": item.charge_to_manager})
 
 
 @router.post("/{appeal_id}/delete")

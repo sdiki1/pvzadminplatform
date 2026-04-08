@@ -42,7 +42,21 @@
 
 <div class="table-container">
     <table class="table">
-        <thead><tr><th>Дата</th><th>Точка</th><th>Тип</th><th>ШК</th><th>Тикет</th><th>Сумма</th><th>Статус</th><th>Фамилия менеджера</th><th>Причина</th><th>Списание</th><th>ОС Надежды</th><th>ОС Анны</th><th></th></tr></thead>
+        <thead><tr>
+            <th>Дата</th>
+            <th>Точка</th>
+            <th>Тип</th>
+            <th>ШК</th>
+            <th>Тикет</th>
+            <th>Сумма</th>
+            <th>Статус</th>
+            <th>Фамилия менеджера</th>
+            <th>Причина</th>
+            <th>Списание</th>
+            <th>ОС Надежды</th>
+            <th>ОС Анны</th>
+            <th></th>
+        </tr></thead>
         <tbody>
             {% for item in items %}
             <tr>
@@ -52,10 +66,37 @@
                 <td>{{ item.barcode or '-' }}</td>
                 <td>{{ item.ticket_number or '-' }}</td>
                 <td>{{ '%.2f'|format(item.amount) if item.amount else '-' }}</td>
-                <td><span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span></td>
+
+                {# ── Статус — inline select для редакторов ── #}
+                <td>
+                {% if can_edit %}
+                    <select class="form-select form-select-sm appeal-status-select"
+                            data-appeal-id="{{ item.id }}"
+                            style="min-width:120px">
+                        {% for code, label in statuses %}
+                        <option value="{{ code }}" {% if item.status == code %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                {% else %}
+                    <span class="badge badge-status-{{ item.status }}">{{ status_labels.get(item.status, item.status) }}</span>
+                {% endif %}
+                </td>
+
                 <td>{{ users_map.get(item.assigned_manager_employee_id).full_name if item.assigned_manager_employee_id and users_map.get(item.assigned_manager_employee_id) else (item.assigned_manager_raw or '-') }}</td>
                 <td>{{ item.non_appeal_reason or '-' }}</td>
-                <td>{% if item.charge_to_manager %}<span class="badge bg-danger">Да</span>{% else %}-{% endif %}</td>
+
+                {# ── Списание — inline checkbox для редакторов ── #}
+                <td class="text-center">
+                {% if can_edit %}
+                    <input type="checkbox"
+                           class="form-check-input appeal-charge-cb"
+                           data-appeal-id="{{ item.id }}"
+                           {% if item.charge_to_manager %}checked{% endif %}>
+                {% else %}
+                    {% if item.charge_to_manager %}<span class="badge bg-danger">Да</span>{% else %}-{% endif %}
+                {% endif %}
+                </td>
+
                 <td>{{ item.feedback_from_nadezhda or '-' }}</td>
                 <td>{{ item.feedback_from_anna or '-' }}</td>
                 <td><a href="/appeals/{{ item.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-eye"></i></a></td>
@@ -67,4 +108,52 @@
     </table>
     {{ pagination(page, total_pages, total, '/appeals?point_id=' + point_id|string + '&status=' + status + '&appeal_type=' + appeal_type + '&date_from=' + date_from + '&search=' + search) }}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    /* ── общая функция отправки PATCH-запроса ── */
+    async function quickEdit(appealId, payload) {
+        const row = document.querySelector(`[data-appeal-id="${appealId}"]`)?.closest('tr');
+        try {
+            const resp = await fetch(`/appeals/${appealId}/quick-edit`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            if (!resp.ok) throw new Error(await resp.text());
+            /* Обновляем бейдж статуса рядом с селектом (если есть) */
+            if (payload.status !== undefined && row) {
+                row.querySelectorAll('.status-save-indicator').forEach(el => el.remove());
+            }
+            flashRow(row, 'success');
+        } catch (e) {
+            console.error('quick-edit error:', e);
+            flashRow(row, 'error');
+        }
+    }
+
+    function flashRow(row, type) {
+        if (!row) return;
+        const cls = type === 'success' ? 'table-success' : 'table-danger';
+        row.classList.add(cls);
+        setTimeout(() => row.classList.remove(cls), 900);
+    }
+
+    /* ── Статус ── */
+    document.querySelectorAll('.appeal-status-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            quickEdit(sel.dataset.appealId, {status: sel.value});
+        });
+    });
+
+    /* ── Списание ── */
+    document.querySelectorAll('.appeal-charge-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+            quickEdit(cb.dataset.appealId, {charge_to_manager: cb.checked});
+        });
+    });
+})();
+</script>
 {% endblock %}
