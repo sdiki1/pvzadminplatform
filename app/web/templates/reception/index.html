@@ -219,23 +219,19 @@
 <div id="chartModalBackdrop" onclick="closeChart()"></div>
 <div id="chartModal">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h6 class="mb-0 fw-bold"><i class="bi bi-bar-chart-line me-2 text-primary"></i>График по точке за 12 месяцев</h6>
+        <h6 class="mb-0 fw-bold"><i class="bi bi-graph-up me-2 text-primary"></i>График приёмки</h6>
         <button class="btn-close" onclick="closeChart()"></button>
     </div>
-    <div class="d-flex gap-3 mb-3 align-items-center">
+    <div class="d-flex flex-wrap gap-3 mb-3 align-items-center">
         <select id="chartPointSelect" class="form-select form-select-sm" style="max-width:260px">
             {% for p in points %}
             <option value="{{ p.id }}" {% if p.id == point_id %}selected{% endif %}>{{ p.name }}</option>
             {% endfor %}
         </select>
-        <select id="chartMonths" class="form-select form-select-sm" style="max-width:120px">
-            <option value="6">6 мес.</option>
-            <option value="12" selected>12 мес.</option>
-            <option value="24">24 мес.</option>
-        </select>
-        <button class="btn btn-sm btn-primary" onclick="loadChart()">
-            <i class="bi bi-arrow-clockwise me-1"></i>Обновить
-        </button>
+        <div class="btn-group btn-group-sm" role="group">
+            <button type="button" class="btn btn-outline-primary active" id="btnPeriodMonth" onclick="setPeriod('month')">За месяц</button>
+            <button type="button" class="btn btn-outline-primary" id="btnPeriodWeek" onclick="setPeriod('week')">За неделю</button>
+        </div>
     </div>
     <div style="position:relative;height:320px">
         <canvas id="receptionChart"></canvas>
@@ -378,6 +374,7 @@ colorizeAll();
 
 /* ── Chart ── */
 var chartInstance = null;
+var chartPeriod   = 'month';   // 'month' | 'week'
 
 function openChart() {
     document.getElementById('chartModalBackdrop').style.display = 'block';
@@ -390,44 +387,71 @@ function closeChart() {
     document.getElementById('chartModal').style.display = 'none';
 }
 
+function setPeriod(p) {
+    chartPeriod = p;
+    document.getElementById('btnPeriodMonth').classList.toggle('active', p === 'month');
+    document.getElementById('btnPeriodWeek').classList.toggle('active',  p === 'week');
+    loadChart();
+}
+
 function loadChart() {
-    var pid    = document.getElementById('chartPointSelect').value;
-    var months = document.getElementById('chartMonths').value;
-    fetch('/reception/chart-data?point_id=' + pid + '&months=' + months)
+    var pid = document.getElementById('chartPointSelect').value;
+    var url = '/reception/chart-data?point_id=' + pid
+            + '&period=' + chartPeriod
+            + '&year={{ year }}&month={{ month }}';
+
+    fetch(url)
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        var labels      = data.map(function(d) { return d.label; });
-        var avgItems    = data.map(function(d) { return d.avg_items; });
-        var avgClients  = data.map(function(d) { return d.avg_clients; });
+        var labels  = data.map(function(d) { return d.label; });
+        var items   = data.map(function(d) { return d.items_given; });
+        var clients = data.map(function(d) { return d.clients_count; });
 
-        if (chartInstance) chartInstance.destroy();
+        if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
 
         var ctx = document.getElementById('receptionChart').getContext('2d');
+
+        // Gradient fills
+        var gradBlue = ctx.createLinearGradient(0, 0, 0, 300);
+        gradBlue.addColorStop(0, 'rgba(59,130,246,0.35)');
+        gradBlue.addColorStop(1, 'rgba(59,130,246,0.02)');
+
+        var gradGreen = ctx.createLinearGradient(0, 0, 0, 300);
+        gradGreen.addColorStop(0, 'rgba(16,185,129,0.28)');
+        gradGreen.addColorStop(1, 'rgba(16,185,129,0.02)');
+
         chartInstance = new Chart(ctx, {
-            type: 'bar',
+            type: 'line',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Среднее товаров/день',
-                        data: avgItems,
-                        backgroundColor: 'rgba(59,130,246,0.7)',
-                        borderColor: '#2563eb',
-                        borderWidth: 1,
-                        borderRadius: 4,
+                        label: 'Товаров отдали',
+                        data: items,
+                        borderColor: '#3b82f6',
+                        backgroundColor: gradBlue,
+                        borderWidth: 2.5,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#3b82f6',
+                        tension: 0.45,
+                        fill: true,
                         yAxisID: 'y',
+                        spanGaps: true,
                     },
                     {
-                        label: 'Среднее клиентов/день',
-                        data: avgClients,
-                        type: 'line',
+                        label: 'Клиентов в день',
+                        data: clients,
                         borderColor: '#10b981',
-                        backgroundColor: 'rgba(16,185,129,0.15)',
-                        borderWidth: 2,
+                        backgroundColor: gradGreen,
+                        borderWidth: 2.5,
                         pointRadius: 4,
-                        tension: 0.3,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#10b981',
+                        tension: 0.45,
                         fill: true,
                         yAxisID: 'y2',
+                        spanGaps: true,
                     },
                 ],
             },
@@ -441,22 +465,27 @@ function loadChart() {
                         callbacks: {
                             label: function(ctx) {
                                 var v = ctx.parsed.y;
-                                return ctx.dataset.label + ': ' + (v !== null ? v.toFixed(1) : '—');
+                                return ' ' + ctx.dataset.label + ': ' + (v !== null ? v : '—');
                             },
                         },
                     },
                 },
                 scales: {
+                    x: {
+                        grid: { color: 'rgba(0,0,0,0.05)' },
+                        ticks: { maxRotation: 45, font: { size: 11 } },
+                    },
                     y: {
                         type: 'linear',
                         position: 'left',
-                        title: { display: true, text: 'Товаров/день' },
+                        title: { display: true, text: 'Товаров', font: { size: 11 } },
                         beginAtZero: true,
+                        grid: { color: 'rgba(59,130,246,0.08)' },
                     },
                     y2: {
                         type: 'linear',
                         position: 'right',
-                        title: { display: true, text: 'Клиентов/день' },
+                        title: { display: true, text: 'Клиентов', font: { size: 11 } },
                         beginAtZero: true,
                         grid: { drawOnChartArea: false },
                     },
@@ -464,17 +493,17 @@ function loadChart() {
             },
         });
 
-        // Summary stats below chart
-        var nonNull = data.filter(function(d) { return d.avg_items !== null; });
+        // Summary stats
+        var withItems = data.filter(function(d) { return d.items_given !== null; });
         var statsEl = document.getElementById('chartStats');
-        if (nonNull.length) {
-            var avgAll = nonNull.reduce(function(s,d) { return s + d.avg_items; }, 0) / nonNull.length;
-            var maxM   = nonNull.reduce(function(a,b) { return a.avg_items > b.avg_items ? a : b; });
-            var minM   = nonNull.reduce(function(a,b) { return a.avg_items < b.avg_items ? a : b; });
+        if (withItems.length) {
+            var avg = withItems.reduce(function(s,d){ return s + d.items_given; }, 0) / withItems.length;
+            var best = withItems.reduce(function(a,b){ return a.items_given > b.items_given ? a : b; });
+            var worst = withItems.reduce(function(a,b){ return a.items_given < b.items_given ? a : b; });
             statsEl.innerHTML =
-                '<div class="badge bg-primary-subtle text-primary-emphasis p-2 fs-6">Среднее за период: <b>' + avgAll.toFixed(1) + '</b> товаров/день</div>' +
-                '<div class="badge bg-success-subtle text-success-emphasis p-2 fs-6">Лучший месяц: <b>' + maxM.label + '</b> (' + maxM.avg_items.toFixed(1) + ')</div>' +
-                '<div class="badge bg-danger-subtle text-danger-emphasis p-2 fs-6">Слабый месяц: <b>' + minM.label + '</b> (' + minM.avg_items.toFixed(1) + ')</div>';
+                '<div class="badge bg-primary-subtle text-primary-emphasis p-2">Среднее: <b>' + avg.toFixed(1) + '</b> товаров/день</div>' +
+                '<div class="badge bg-success-subtle text-success-emphasis p-2">Максимум: <b>' + best.label + '</b> — ' + best.items_given + ' шт.</div>' +
+                '<div class="badge bg-danger-subtle text-danger-emphasis p-2">Минимум: <b>' + worst.label + '</b> — ' + worst.items_given + ' шт.</div>';
         } else {
             statsEl.innerHTML = '<span class="text-muted small">Нет данных за выбранный период</span>';
         }
@@ -482,6 +511,5 @@ function loadChart() {
 }
 
 document.getElementById('chartPointSelect').addEventListener('change', loadChart);
-document.getElementById('chartMonths').addEventListener('change', loadChart);
 </script>
 {% endblock %}

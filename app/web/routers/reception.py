@@ -154,11 +154,12 @@ async def save_cell(
 
 
 # ---------------------------------------------------------------------------
-# Chart data — monthly averages for last N months
+# Chart data — daily values for a given period (month or week)
 # ---------------------------------------------------------------------------
 
-MONTH_NAMES_RU = ["Янв","Фев","Мар","Апр","Май","Июн",
-                  "Июл","Авг","Сен","Окт","Ноя","Дек"]
+from datetime import timedelta
+
+DAY_NAMES_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 
 @router.get("/chart-data")
@@ -166,36 +167,50 @@ async def reception_chart_data(
     db: AsyncSession = Depends(get_db),
     current_user: WebUser = Depends(get_current_user),
     point_id: int = 0,
-    months: int = 12,
+    period: str = "month",   # "month" | "week"
+    year: int = 0,
+    month: int = 0,
 ):
     today = date.today()
+    if not year:
+        year = today.year
+    if not month:
+        month = today.month
+
+    if period == "week":
+        # Last 7 days ending today
+        d_end   = today
+        d_start = today - timedelta(days=6)
+    else:
+        # Full calendar month
+        _, days_in_month = calendar.monthrange(year, month)
+        d_start = date(year, month, 1)
+        d_end   = date(year, month, days_in_month)
+
+    stats = (await db.execute(
+        select(ReceptionStat).where(
+            ReceptionStat.point_id == point_id,
+            ReceptionStat.stat_date >= d_start,
+            ReceptionStat.stat_date <= d_end,
+        )
+    )).scalars().all()
+    stats_by_date = {s.stat_date: s for s in stats}
+
     results = []
-    for i in range(months - 1, -1, -1):
-        m = today.month - i
-        y = today.year
-        while m <= 0:
-            m += 12
-            y -= 1
-        _, days_in_month = calendar.monthrange(y, m)
-        stats = (await db.execute(
-            select(ReceptionStat).where(
-                ReceptionStat.point_id == point_id,
-                ReceptionStat.stat_date >= date(y, m, 1),
-                ReceptionStat.stat_date <= date(y, m, days_in_month),
-            )
-        )).scalars().all()
-
-        items_vals   = [s.items_given for s in stats if s.items_given is not None]
-        clients_vals = [s.clients_count for s in stats if s.clients_count is not None]
-        accept_vals  = [float(s.acceptance_amount) for s in stats if s.acceptance_amount is not None]
-
+    cur = d_start
+    while cur <= d_end:
+        s = stats_by_date.get(cur)
+        if period == "week":
+            label = f"{cur.day:02d}.{cur.month:02d} {DAY_NAMES_RU[cur.weekday()]}"
+        else:
+            label = f"{cur.day} {DAY_NAMES_RU[cur.weekday()]}"
         results.append({
-            "label":       f"{MONTH_NAMES_RU[m - 1]} {y}",
-            "avg_items":   round(sum(items_vals) / len(items_vals), 1) if items_vals else None,
-            "avg_clients": round(sum(clients_vals) / len(clients_vals), 1) if clients_vals else None,
-            "total_items":   sum(items_vals) if items_vals else None,
-            "total_accept":  round(sum(accept_vals), 2) if accept_vals else None,
+            "label":          label,
+            "items_given":    s.items_given if s and s.items_given is not None else None,
+            "clients_count":  s.clients_count if s and s.clients_count is not None else None,
+            "acceptance":     float(s.acceptance_amount) if s and s.acceptance_amount is not None else None,
         })
+        cur += timedelta(days=1)
 
     return JSONResponse(results)
 
