@@ -23,7 +23,6 @@ APPEAL_TYPES = [
     ("defect", "Брак"),
     ("substitution", "Подмена"),
     ("stuck", "Зависшие"),
-    ("other", "Другое"),
 ]
 
 APPEAL_STATUSES = [

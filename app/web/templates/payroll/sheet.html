@@ -70,10 +70,6 @@
 
     <table class="table payslip-table">
         <tbody>
-            <tr>
-                <td class="label">Количество смен</td>
-                <td class="amount">{{ item.shifts_count }}</td>
-            </tr>
             {% set hourly_rows = shift_rows | selectattr('basis', 'equalto', 'Почасовая часть') | list %}
             {% if hourly_rows %}
             <tr>
@@ -136,10 +132,7 @@
                 <td class="label">Брак товара</td>
                 <td class="amount text-danger">−{{ "%.2f"|format(item.defect_deduction_rub|float) }} ₽</td>
             </tr>
-            <tr>
-                <td class="label">Удержания по товарам (не оспорено)</td>
-                <td class="amount text-danger">−{{ "%.2f"|format(item.dispute_deduction_rub|float) }} ₽</td>
-            </tr>
+
             <tr>
                 <td class="label">Подытог (без ДС)</td>
                 <td class="amount">{{ "%.2f"|format((item.total_amount_rub - item.debt_adjustment_rub)|float) }} ₽</td>
