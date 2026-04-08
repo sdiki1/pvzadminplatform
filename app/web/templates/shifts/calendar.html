@@ -763,47 +763,61 @@
     /* ── Edit actual shift modal ── */
     var editModal    = document.getElementById('editShiftModal');
     var editBackdrop = document.getElementById('editShiftBackdrop');
-    var editShiftId  = null;
+    var editShiftId  = null;   // set when editing existing shift
+    var createData   = null;   // set when creating new shift from planned
 
     function closeEditShift() {
         editModal.style.display    = 'none';
         editBackdrop.style.display = 'none';
         document.getElementById('editShiftError').style.display = 'none';
         editShiftId = null;
+        createData  = null;
     }
     document.getElementById('editShiftClose').addEventListener('click', closeEditShift);
     document.getElementById('editShiftCancel').addEventListener('click', closeEditShift);
     editBackdrop.addEventListener('click', closeEditShift);
 
-    function openEditShift(shiftId, props, dateStr) {
-        editShiftId = shiftId;
-        // meta line
-        var meta = (props.employee || '—') + ' · ' + dateStr;
-        document.getElementById('editShiftMeta').textContent = meta;
-        // fields
+    function _fillEditModal(props, dateStr) {
+        document.getElementById('editShiftMeta').textContent = (props.employee || '—') + ' · ' + dateStr;
         document.getElementById('editPoint').value    = props.point_id || '';
-        document.getElementById('editDate').value     = dateStr;
+        document.getElementById('editDate').value     = props.shift_date || dateStr;
         document.getElementById('editOpenedAt').value = props.opened_at || '';
         document.getElementById('editClosedAt').value = props.closed_at || '';
-        document.getElementById('editState').value    = props.state || 'open';
+        document.getElementById('editState').value    = props.state || 'closed';
         document.getElementById('editNotes').value    = props.notes || '';
         document.getElementById('editShiftError').style.display = 'none';
-        // close the detail popup first
+    }
+
+    function openEditShift(shiftId, props, dateStr) {
+        editShiftId = shiftId;
+        createData  = null;
+        _fillEditModal(props, dateStr);
+        closePopup();
+        editBackdrop.style.display = 'block';
+        editModal.style.display    = 'block';
+    }
+
+    function openCreateShift(initProps, niceDateStr) {
+        editShiftId = null;
+        createData  = { user_id: initProps.user_id };
+        _fillEditModal(initProps, niceDateStr);
+        // Update modal title to "Создать смену"
+        document.querySelector('#editShiftModal h6').innerHTML =
+            '<i class="bi bi-plus-circle me-2 text-success"></i>Создать фактическую смену';
         closePopup();
         editBackdrop.style.display = 'block';
         editModal.style.display    = 'block';
     }
 
     document.getElementById('editShiftSave').addEventListener('click', function () {
-        if (!editShiftId) return;
         var errEl = document.getElementById('editShiftError');
         var payload = {
-            point_id:  parseInt(document.getElementById('editPoint').value, 10),
+            point_id:   parseInt(document.getElementById('editPoint').value, 10),
             shift_date: document.getElementById('editDate').value,
-            opened_at: document.getElementById('editOpenedAt').value,
-            closed_at: document.getElementById('editClosedAt').value,
-            state:     document.getElementById('editState').value,
-            notes:     document.getElementById('editNotes').value.trim(),
+            opened_at:  document.getElementById('editOpenedAt').value,
+            closed_at:  document.getElementById('editClosedAt').value,
+            state:      document.getElementById('editState').value,
+            notes:      document.getElementById('editNotes').value.trim(),
         };
         if (!payload.point_id || !payload.shift_date) {
             errEl.textContent = 'Заполните точку и дату';
@@ -811,14 +825,31 @@
             return;
         }
         errEl.style.display = 'none';
-        fetch('/shifts/api/shift/' + editShiftId + '/edit', {
+
+        var url, body;
+        if (editShiftId) {
+            // Edit existing
+            url  = '/shifts/api/shift/' + editShiftId + '/edit';
+            body = payload;
+        } else if (createData) {
+            // Create new
+            url  = '/shifts/api/shift/create';
+            body = Object.assign({}, payload, { user_id: createData.user_id });
+        } else {
+            return;
+        }
+
+        fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(body),
         })
         .then(function (r) { return r.json(); })
         .then(function (data) {
             if (data.ok) {
+                // Restore modal title for next time
+                document.querySelector('#editShiftModal h6').innerHTML =
+                    '<i class="bi bi-pencil me-2 text-primary"></i>Редактировать смену';
                 closeEditShift();
                 calendar.refetchEvents();
             } else {
