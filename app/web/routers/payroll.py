@@ -381,7 +381,12 @@ async def _build_generate_context(
             )
             rows = sorted(rows, key=lambda r: (r.user.full_name or "").lower())
             for row in rows:
-                subtotal_base = (Decimal(row.subtotal_amount_rub) - Decimal(row.issued_bonus_rub)).quantize(Decimal("0.01"))
+                # Exclude both issued_bonus and rating_bonus so JS can recompute auto-rating without circular dependency
+                subtotal_base = (
+                    Decimal(row.subtotal_amount_rub)
+                    - Decimal(row.issued_bonus_rub)
+                    - Decimal(row.rating_bonus_rub)
+                ).quantize(Decimal("0.01"))
                 preview_rows.append({
                     "user_id": row.user.id,
                     "full_name": row.user.full_name,

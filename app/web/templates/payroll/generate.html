@@ -165,9 +165,10 @@
     }
 
     function autoRating(totalWithoutRating) {
-        var rounded = Math.round(totalWithoutRating);
-        var remainder = ((rounded % 100) + 100) % 100;
-        return remainder === 0 ? 0 : 100 - remainder;
+        // Work in kopecks to avoid float precision issues
+        var kopecks = Math.round(totalWithoutRating * 100);
+        var remainder = ((kopecks % 10000) + 10000) % 10000; // 100 руб = 10000 коп
+        return remainder === 0 ? 0 : (10000 - remainder) / 100;
     }
 
     function recalcRows() {

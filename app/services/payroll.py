@@ -163,10 +163,16 @@ class PayrollService:
                 ReceptionStat.stat_date <= period_end,
             )
         )
+        _reception_rows = reception_stats_result.scalars().all()
         reception_stats: dict[tuple, Decimal] = {
             (r.point_id, r.stat_date): Decimal(r.acceptance_amount or 0)
-            for r in reception_stats_result.scalars().all()
+            for r in _reception_rows
             if r.acceptance_amount is not None
+        }
+        reception_items: dict[tuple, Decimal] = {
+            (r.point_id, r.stat_date): Decimal(r.items_given or 0)
+            for r in _reception_rows
+            if r.items_given is not None
         }
 
         shift_hours_by_user = defaultdict(lambda: ZERO)
@@ -224,13 +230,25 @@ class PayrollService:
                 share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
                 motivation_by_user[shift.user_id] += acceptance * share
 
-        # issued_count and tickets still come from motivation_records
+        # Distribute reception_stats.items_given among employees proportionally
+        for (point_id, stat_date), items in reception_items.items():
+            if items <= 0:
+                continue
+            day_shifts = shifts_by_day_point.get((stat_date, point_id), [])
+            if not day_shifts:
+                continue
+            total_minutes = sum(max(s.duration_minutes or 0, 1) for s in day_shifts)
+            if total_minutes <= 0:
+                continue
+            for shift in day_shifts:
+                share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
+                issued_count_by_user[shift.user_id] += items * share
+
+        # tickets still come from motivation_records
         for rec in main_records:
-            issued = Decimal(rec.issued_items_count or 0)
             tickets = Decimal(rec.tickets_count or 0)
             user_id = rec.user_id or self._match_user_id_from_name(rec.manager_name, user_id_by_last_name)
             if user_id:
-                issued_count_by_user[user_id] += issued
                 tickets_by_user[user_id] += tickets
                 continue
             if not rec.point_id:
@@ -243,7 +261,6 @@ class PayrollService:
                 continue
             for shift in day_shifts:
                 share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
-                issued_count_by_user[shift.user_id] += issued * share
                 tickets_by_user[shift.user_id] += tickets * share
 
         stuck_deduction_by_user = defaultdict(lambda: ZERO)
@@ -352,8 +369,8 @@ class PayrollService:
                     + substitution_bonus - dispute + manager_bonus + adjustment
                     + debt_adjustment
                 )
-                _remainder = int(_total_without_rating) % 100
-                rating_bonus = ZERO if _remainder == 0 else Decimal(100 - _remainder)
+                _remainder = _total_without_rating % Decimal("100")
+                rating_bonus = ZERO if _remainder == 0 else (Decimal("100") - _remainder)
 
             subtotal = (
                 base
