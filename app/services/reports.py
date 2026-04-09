@@ -109,7 +109,6 @@ class ReportService:
             ws.append(["Зависшие товары", "", "", self._num(row.stuck_deduction_rub)])
             ws.append(["Подмена товара", "", "", self._num(row.substitution_deduction_rub)])
             ws.append(["Брак товара", "", "", self._num(row.defect_deduction_rub)])
-            ws.append(["Удержания по товарам (не оспорено)", "", "", self._num(row.dispute_deduction_rub)])
             ws.append(["Доп. выплаты менеджера", "", "", self._num(row.manager_bonus_rub)])
             ws.append(["Премия / удержание руководства", "", "", self._num(row.adjustments_rub)])
             ws.append(["Подытог (без ДС)", "", "", round(self._num(row.total_amount_rub) - self._num(row.debt_adjustment_rub), 2)])
@@ -181,7 +180,6 @@ class ReportService:
             ("Зависшие товары", -self._num(item.stuck_deduction_rub)),
             ("Подмена товара", -self._num(item.substitution_deduction_rub)),
             ("Брак товара", -self._num(item.defect_deduction_rub)),
-            ("Удержания по товарам (не оспорено)", -self._num(item.dispute_deduction_rub)),
             ("Доп. выплаты менеджера", self._num(item.manager_bonus_rub)),
             ("Премия / удержание руководства", self._num(item.adjustments_rub)),
             ("Подытог (без ДС)", round(self._num(item.total_amount_rub) - self._num(item.debt_adjustment_rub), 2)),
@@ -424,7 +422,6 @@ class ReportService:
             ["Зависшие товары", -self._num(item.stuck_deduction_rub)],
             ["Подмена товара", -self._num(item.substitution_deduction_rub)],
             ["Брак товара", -self._num(item.defect_deduction_rub)],
-            ["Удержания по товарам", -self._num(item.dispute_deduction_rub)],
             ["Доп. выплаты менеджера", self._num(item.manager_bonus_rub)],
             ["Премия / удержание руководства", self._num(item.adjustments_rub)],
             ["Подытог (без ДС)", round(self._num(item.total_amount_rub) - self._num(item.debt_adjustment_rub), 2)],
