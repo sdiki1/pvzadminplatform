@@ -230,7 +230,11 @@ class PayrollService:
                 share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
                 motivation_by_user[shift.user_id] += acceptance * share
 
-        # Distribute reception_stats.items_given among employees proportionally
+        # Distribute reception_stats.items_given:
+        # - item count: proportionally by duration (for display purposes)
+        # - bonus: calculated from total daily items, then split equally among employees
+        issued_bonus_by_user: defaultdict[int, Decimal] = defaultdict(lambda: ZERO)
+
         for (point_id, stat_date), items in reception_items.items():
             if items <= 0:
                 continue
@@ -240,9 +244,19 @@ class PayrollService:
             total_minutes = sum(max(s.duration_minutes or 0, 1) for s in day_shifts)
             if total_minutes <= 0:
                 continue
+
+            # Accumulate proportional item count for display
             for shift in day_shifts:
                 share = Decimal(max(shift.duration_minutes or 0, 1)) / Decimal(total_minutes)
                 issued_count_by_user[shift.user_id] += items * share
+
+            # Bonus = floor(total_items_today / step) * bonus_amount, split equally
+            full_steps = int(Decimal(str(items)) // Decimal(self.settings.wb_issue_bonus_step))
+            day_bonus = Decimal(full_steps * self.settings.wb_issue_bonus_amount)
+            if day_bonus > 0:
+                per_employee = day_bonus / Decimal(len(day_shifts))
+                for shift in day_shifts:
+                    issued_bonus_by_user[shift.user_id] += per_employee
 
         # tickets still come from motivation_records
         for rec in main_records:
@@ -323,11 +337,6 @@ class PayrollService:
         manager_bonus_by_user = defaultdict(lambda: ZERO)
         if payout_day == 10:
             manager_bonus_by_user = await self._calc_manager_bonus_for_tenth(period_end, users_map, user_id_by_last_name)
-
-        issued_bonus_by_user = defaultdict(lambda: ZERO)
-        for user_id, issued_count in issued_count_by_user.items():
-            full_steps = int(issued_count // Decimal(self.settings.wb_issue_bonus_step))
-            issued_bonus_by_user[user_id] = Decimal(full_steps * self.settings.wb_issue_bonus_amount)
 
         reserve_bonus_by_user = defaultdict(lambda: ZERO)
         for user_id, reserve_count in reserve_count_by_user.items():
