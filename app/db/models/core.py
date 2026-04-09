@@ -87,7 +87,13 @@ class User(Base):
 
     # 1/2/3 - для доп. начислений в выплате 10-го числа
     manager_bonus_type: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    # Персональные ставки сотрудника (применяются во всех точках)
+    # Персональные ставки — WB
+    shift_rate_rub_wb: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
+    hourly_rate_rub_wb: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    # Персональные ставки — OZON
+    shift_rate_rub_ozon: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
+    hourly_rate_rub_ozon: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    # Legacy (оставлено для обратной совместимости, не используется в новых расчётах)
     shift_rate_rub: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"), nullable=False)
     hourly_rate_rub: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     # Цвет в календаре (hex, например #3b82f6)

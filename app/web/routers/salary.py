@@ -79,8 +79,25 @@ async def salary_index(
     })
 
 
-@router.post("/employee/{user_id}/rates")
-async def update_user_rates(
+def _parse_rate(raw: str) -> Decimal:
+    try:
+        return Decimal(raw.replace(",", "."))
+    except InvalidOperation:
+        return Decimal("0")
+
+
+def _parse_optional_rate(raw: str) -> Decimal | None:
+    raw = raw.strip()
+    if not raw:
+        return None
+    try:
+        return Decimal(raw.replace(",", "."))
+    except InvalidOperation:
+        return None
+
+
+@router.post("/employee/{user_id}/rates/wb")
+async def update_user_rates_wb(
     user_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -92,21 +109,28 @@ async def update_user_rates(
         return RedirectResponse(url="/salary", status_code=302)
 
     form = await request.form()
-    try:
-        shift_rate = Decimal(str(form.get("shift_rate_rub", "0")).replace(",", "."))
-    except InvalidOperation:
-        shift_rate = Decimal("0")
-
-    hourly_raw = str(form.get("hourly_rate_rub", "")).replace(",", ".").strip()
-    try:
-        hourly_rate = Decimal(hourly_raw) if hourly_raw else None
-    except InvalidOperation:
-        hourly_rate = None
-
-    user.shift_rate_rub = shift_rate
-    user.hourly_rate_rub = hourly_rate
+    user.shift_rate_rub_wb = _parse_rate(str(form.get("shift_rate_rub_wb", "0")))
+    user.hourly_rate_rub_wb = _parse_optional_rate(str(form.get("hourly_rate_rub_wb", "")))
     await db.commit()
+    return RedirectResponse(url="/salary#user-" + str(user_id), status_code=302)
 
+
+@router.post("/employee/{user_id}/rates/ozon")
+async def update_user_rates_ozon(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        return RedirectResponse(url="/salary", status_code=302)
+
+    form = await request.form()
+    user.shift_rate_rub_ozon = _parse_rate(str(form.get("shift_rate_rub_ozon", "0")))
+    user.hourly_rate_rub_ozon = _parse_optional_rate(str(form.get("hourly_rate_rub_ozon", "")))
+    await db.commit()
     return RedirectResponse(url="/salary#user-" + str(user_id), status_code=302)
 
 

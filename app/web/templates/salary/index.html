@@ -94,14 +94,26 @@
             {% if user.last_name %}<span class="text-muted ms-1" style="font-size:12px">(@{{ user.last_name }})</span>{% endif %}
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
-            <form method="post" action="/salary/employee/{{ user.id }}/rates" class="d-flex align-items-center gap-2">
-                <label class="form-label mb-0 small text-muted">Ставки:</label>
-                <input type="number" name="shift_rate_rub"
-                    value="{{ user.shift_rate_rub | float | round(2) }}"
+            <form method="post" action="/salary/employee/{{ user.id }}/rates/wb" class="d-flex align-items-center gap-2">
+                <span class="point-badge-wb">WB</span>
+                <input type="number" name="shift_rate_rub_wb"
+                    value="{{ user.shift_rate_rub_wb | float | round(2) }}"
                     step="0.01" min="0"
                     class="form-control form-control-sm rate-input" placeholder="Смена, ₽">
-                <input type="number" name="hourly_rate_rub"
-                    value="{{ user.hourly_rate_rub | float | round(2) if user.hourly_rate_rub is not none else '' }}"
+                <input type="number" name="hourly_rate_rub_wb"
+                    value="{{ user.hourly_rate_rub_wb | float | round(2) if user.hourly_rate_rub_wb is not none else '' }}"
+                    step="0.01" min="0"
+                    class="form-control form-control-sm rate-input" placeholder="Час, ₽">
+                <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i></button>
+            </form>
+            <form method="post" action="/salary/employee/{{ user.id }}/rates/ozon" class="d-flex align-items-center gap-2">
+                <span class="point-badge-ozon">OZON</span>
+                <input type="number" name="shift_rate_rub_ozon"
+                    value="{{ user.shift_rate_rub_ozon | float | round(2) }}"
+                    step="0.01" min="0"
+                    class="form-control form-control-sm rate-input" placeholder="Смена, ₽">
+                <input type="number" name="hourly_rate_rub_ozon"
+                    value="{{ user.hourly_rate_rub_ozon | float | round(2) if user.hourly_rate_rub_ozon is not none else '' }}"
                     step="0.01" min="0"
                     class="form-control form-control-sm rate-input" placeholder="Час, ₽">
                 <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-check2"></i></button>

@@ -462,9 +462,14 @@ class PayrollService:
 
     def _calc_shift_base(self, shift: Shift, user: User, point) -> Decimal:
         hours = self._shift_hours(shift)
-        is_ozon = bool(point and point.brand.value == "ozon")
-        shift_rate = Decimal(user.shift_rate_rub or 0)
-        hourly_rate = Decimal(user.hourly_rate_rub or 0)
+        is_ozon = bool(point and point.brand and point.brand.value == "ozon")
+
+        if is_ozon:
+            shift_rate = Decimal(user.shift_rate_rub_ozon or 0) or Decimal(user.shift_rate_rub or 0)
+            hourly_rate = Decimal(user.hourly_rate_rub_ozon or 0) or Decimal(user.hourly_rate_rub or 0)
+        else:
+            shift_rate = Decimal(user.shift_rate_rub_wb or 0) or Decimal(user.shift_rate_rub or 0)
+            hourly_rate = Decimal(user.hourly_rate_rub_wb or 0) or Decimal(user.hourly_rate_rub or 0)
 
         # Если указана почасовая ставка и смена существенно меньше 8 часов,
         # считаем почасовую оплату; иначе оплата за смену.

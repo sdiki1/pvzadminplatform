@@ -40,6 +40,30 @@ def _ensure_user_rate_columns(sync_conn) -> None:
         else:
             statements.append("ALTER TABLE users ADD COLUMN hourly_rate_rub NUMERIC(10,2)")
 
+    if "shift_rate_rub_wb" not in existing_cols:
+        if dialect == "sqlite":
+            statements.append("ALTER TABLE users ADD COLUMN shift_rate_rub_wb NUMERIC NOT NULL DEFAULT 0")
+        else:
+            statements.append("ALTER TABLE users ADD COLUMN shift_rate_rub_wb NUMERIC(10,2) NOT NULL DEFAULT 0")
+
+    if "hourly_rate_rub_wb" not in existing_cols:
+        if dialect == "sqlite":
+            statements.append("ALTER TABLE users ADD COLUMN hourly_rate_rub_wb NUMERIC")
+        else:
+            statements.append("ALTER TABLE users ADD COLUMN hourly_rate_rub_wb NUMERIC(10,2)")
+
+    if "shift_rate_rub_ozon" not in existing_cols:
+        if dialect == "sqlite":
+            statements.append("ALTER TABLE users ADD COLUMN shift_rate_rub_ozon NUMERIC NOT NULL DEFAULT 0")
+        else:
+            statements.append("ALTER TABLE users ADD COLUMN shift_rate_rub_ozon NUMERIC(10,2) NOT NULL DEFAULT 0")
+
+    if "hourly_rate_rub_ozon" not in existing_cols:
+        if dialect == "sqlite":
+            statements.append("ALTER TABLE users ADD COLUMN hourly_rate_rub_ozon NUMERIC")
+        else:
+            statements.append("ALTER TABLE users ADD COLUMN hourly_rate_rub_ozon NUMERIC(10,2)")
+
     if "color" not in existing_cols:
         statements.append("ALTER TABLE users ADD COLUMN color VARCHAR(7)")
 
