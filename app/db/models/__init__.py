@@ -19,6 +19,7 @@ from app.db.models.core import (
     PayrollItem,
     PayrollRun,
     PlannedShift,
+    PlannedShiftStatus,
     Point,
     RoleEnum,
     Shift,
@@ -102,6 +103,7 @@ __all__ = [
     "ShiftState",
     "AdjustmentType",
     "MotivationSource",
+    "PlannedShiftStatus",
     # Core models
     "User",
     "Point",

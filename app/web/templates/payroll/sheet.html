@@ -5,11 +5,16 @@
 <style>
     .payslip { max-width: 700px; margin: 0 auto; }
     .payslip-full { max-width: 1200px; }
+    .payslip-outer { background:#fff; border-radius:0.75rem; padding:1.5rem; box-shadow:0 1px 3px rgba(0,0,0,.06); border:1px solid #e2e8f0; }
     .payslip-header { border-bottom: 2px solid #333; padding-bottom: 12px; margin-bottom: 16px; }
     .payslip-table td { padding: 8px 12px; }
     .payslip-table .label { color: #666; }
     .payslip-table .amount { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
     .payslip-total { border-top: 2px solid #333; font-size: 1.15em; font-weight: 700; }
+    @media (max-width: 576px) {
+        .payslip-table td { padding: 6px 8px; font-size: 0.85rem; }
+        .payslip-outer { padding: 0.75rem; }
+    }
     @media print {
         .sidebar, .main-header, .no-print { display: none !important; }
         .main-content { margin-left: 0 !important; padding: 0 !important; }
@@ -18,45 +23,35 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4 no-print">
-    <div class="d-flex align-items-center gap-2">
-        <a href="/payroll/{{ run.id }}" class="btn btn-outline-secondary">
+<div class="d-flex flex-wrap gap-2 mb-4 no-print">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="/payroll/{{ run.id }}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-arrow-left"></i> К ведомости
         </a>
         <div class="btn-group">
             <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=short"
                class="btn btn-sm {% if view_mode == 'short' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                Краткая сводка
+                Кратко
             </a>
             <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=full"
                class="btn btn-sm {% if view_mode == 'full' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                Полная версия
+                Полная
             </a>
         </div>
-    </div>
-    <div class="d-flex gap-2">
-        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}/export.xlsx?view={{ view_mode }}" class="btn btn-outline-success">
+        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}/export.xlsx?view={{ view_mode }}" class="btn btn-outline-success btn-sm">
             <i class="bi bi-file-earmark-excel"></i> Excel
         </a>
-        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}/export.pdf?view={{ view_mode }}" class="btn btn-outline-danger">
+        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}/export.pdf?view={{ view_mode }}" class="btn btn-outline-danger btn-sm">
             <i class="bi bi-filetype-pdf"></i> PDF
         </a>
-        {% if view_mode == 'short' %}
-        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=full" class="btn btn-outline-primary">
-            <i class="bi bi-arrows-expand"></i> Развернуть
-        </a>
-        {% else %}
-        <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}?view=short" class="btn btn-outline-primary">
-            <i class="bi bi-arrows-collapse"></i> Свернуть
-        </a>
-        {% endif %}
-        <button onclick="window.print()" class="btn btn-outline-primary">
+        <button onclick="window.print()" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-printer"></i> Печать
         </button>
     </div>
 </div>
 
 <div class="payslip{% if view_mode == 'full' %} payslip-full{% endif %}">
+<div class="payslip-outer">
     <div class="payslip-header">
         <h4>Расчётный лист</h4>
         <p class="text-muted mb-1">
@@ -160,11 +155,11 @@
             {% endif %}
             <tr>
                 <td class="label">Премия / удержание руководства</td>
-                <td class="amount">{{ "%.2f"|format(item.adjustments_rub|float) }} ₽</td>
+                <td class="amount {% if item.adjustments_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(item.adjustments_rub|float) }} ₽</td>
             </tr>
             <tr>
                 <td class="label">Долг / Переплата ДС</td>
-                <td class="amount">{{ "%.2f"|format(item.debt_adjustment_rub|float) }} ₽</td>
+                <td class="amount {% if item.debt_adjustment_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(item.debt_adjustment_rub|float) }} ₽</td>
             </tr>
             <tr class="payslip-total">
                 <td>ИТОГО К ВЫПЛАТЕ</td>
@@ -403,7 +398,7 @@
                     <tr>
                         <td>{{ row.adjustment_type }}</td>
                         <td>{{ row.comment or '—' }}</td>
-                        <td class="text-end">{{ "%.2f"|format(row.amount_rub|float) }} ₽</td>
+                        <td class="text-end {% if row.amount_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(row.amount_rub|float) }} ₽</td>
                     </tr>
                     {% else %}
                     <tr>
@@ -419,5 +414,6 @@
     <p class="text-muted small mt-4">
         Сформировано: {{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}
     </p>
+</div>
 </div>
 {% endblock %}

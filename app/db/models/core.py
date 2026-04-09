@@ -68,6 +68,12 @@ class MotivationSource(str, Enum):
     OZON = "ozon"
 
 
+class PlannedShiftStatus(str, Enum):
+    PLANNED = "planned"
+    OPENED = "opened"
+    CANCELLED = "cancelled"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -311,6 +317,9 @@ class PlannedShift(Base):
     # Подмена на выходе (+500 ₽ за фактически отработанный выход)
     is_substitution: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[PlannedShiftStatus] = mapped_column(
+        SqlEnum(PlannedShiftStatus), default=PlannedShiftStatus.PLANNED, nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     user: Mapped[User] = relationship()

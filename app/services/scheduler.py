@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.keyboards import tomorrow_confirm_keyboard
 from app.config import Settings
-from app.db.repositories import ConfirmationRepo, ShiftRepo, UserRepo
+from app.db.repositories import ConfirmationRepo, PlannedShiftRepo, ShiftRepo, UserRepo
 
 
 class BotScheduler:
@@ -24,19 +24,22 @@ class BotScheduler:
         self.session_factory = session_factory
         self.settings = settings
         self.scheduler = AsyncIOScheduler(timezone=ZoneInfo(settings.timezone))
+        # Track already-notified (user_id, shift_date) pairs to avoid duplicate alerts
+        self._notified_uncovered: set[tuple[int, str]] = set()
 
     def start(self) -> None:
-        hour, minute = [int(x) for x in self.settings.confirm_request_time.split(":")]
+        req_hour, req_minute = [int(x) for x in self.settings.confirm_request_time.split(":")]
+        dl_hour, dl_minute = [int(x) for x in self.settings.confirm_deadline_time.split(":")]
 
         self.scheduler.add_job(
             self.send_tomorrow_confirm_requests,
-            CronTrigger(hour=hour, minute=minute),
+            CronTrigger(hour=req_hour, minute=req_minute),
             id="daily_confirm_requests",
             replace_existing=True,
         )
         self.scheduler.add_job(
             self.notify_admin_about_unconfirmed,
-            CronTrigger(hour=21, minute=0),
+            CronTrigger(hour=dl_hour, minute=dl_minute),
             id="daily_unconfirmed_alert",
             replace_existing=True,
         )
@@ -44,6 +47,19 @@ class BotScheduler:
             self.notify_admin_about_open_shifts,
             CronTrigger(minute="*/30"),
             id="open_shift_alert",
+            replace_existing=True,
+        )
+        self.scheduler.add_job(
+            self.notify_uncovered_shifts,
+            CronTrigger(minute="*/10"),
+            id="uncovered_shift_alert",
+            replace_existing=True,
+        )
+        # Reset deduplication cache at midnight every day
+        self.scheduler.add_job(
+            self._reset_notified_uncovered,
+            CronTrigger(hour=0, minute=1),
+            id="reset_notified_uncovered",
             replace_existing=True,
         )
         self.scheduler.start()
@@ -121,6 +137,52 @@ class BotScheduler:
                     await self.bot.send_message(admin_tg, text)
                 except Exception:
                     continue
+
+    async def notify_uncovered_shifts(self) -> None:
+        """Alert admins if a planned shift hasn't been opened 10+ minutes after start time."""
+        tz = ZoneInfo(self.settings.timezone)
+        now = datetime.now(tz)
+        today = now.date()
+        threshold_time = (now - timedelta(minutes=10)).time()
+
+        async with self.session_factory() as session:
+            planned_repo = PlannedShiftRepo(session)
+            user_repo = UserRepo(session)
+
+            uncovered = await planned_repo.list_uncovered_for_today(today, threshold_time)
+            if not uncovered:
+                return
+
+            # Filter out already-notified entries
+            new_uncovered = [
+                ps for ps in uncovered
+                if (ps.user_id, today.isoformat()) not in self._notified_uncovered
+            ]
+            if not new_uncovered:
+                return
+
+            users = await user_repo.list_all()
+            user_map = {u.id: u.full_name for u in users}
+
+            lines = []
+            for ps in new_uncovered:
+                name = user_map.get(ps.user_id, str(ps.user_id))
+                point_name = ps.point.name if ps.point else f"Точка #{ps.point_id}"
+                start = ps.start_time or (ps.point.work_start if ps.point else None)
+                start_str = start.strftime("%H:%M") if start else "?"
+                lines.append(f"- {name} | {point_name} | план {start_str}")
+                self._notified_uncovered.add((ps.user_id, today.isoformat()))
+
+            text = f"⚠️ <b>Смены не открыты</b> (прошло 10+ мин):\n\n" + "\n".join(lines)
+            admin_ids = await self._admin_telegram_ids(user_repo)
+            for admin_tg in admin_ids:
+                try:
+                    await self.bot.send_message(admin_tg, text, parse_mode="HTML")
+                except Exception:
+                    continue
+
+    async def _reset_notified_uncovered(self) -> None:
+        self._notified_uncovered.clear()
 
     async def _admin_telegram_ids(self, user_repo: UserRepo) -> list[int]:
         admins = await user_repo.list_admins()

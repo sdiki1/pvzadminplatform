@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Iterable, Optional
 
 from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     AdjustmentType,
@@ -17,6 +18,8 @@ from app.db.models import (
     MotivationSource,
     PayrollItem,
     PayrollRun,
+    PlannedShift,
+    PlannedShiftStatus,
     Point,
     RoleEnum,
     Shift,
@@ -658,3 +661,66 @@ class PayrollRepo:
     async def list_runs(self, limit: int = 10) -> list[PayrollRun]:
         result = await self.session.execute(select(PayrollRun).order_by(PayrollRun.generated_at.desc()).limit(limit))
         return list(result.scalars().all())
+
+
+class PlannedShiftRepo:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def mark_opened(self, user_id: int, shift_date: date, point_id: int) -> None:
+        """Mark the PlannedShift as OPENED when the employee starts their shift."""
+        result = await self.session.execute(
+            select(PlannedShift).where(
+                PlannedShift.user_id == user_id,
+                PlannedShift.shift_date == shift_date,
+                PlannedShift.point_id == point_id,
+            )
+        )
+        ps = result.scalar_one_or_none()
+        if ps:
+            ps.status = PlannedShiftStatus.OPENED
+            await self.session.commit()
+
+    async def list_uncovered_for_today(
+        self,
+        today: date,
+        threshold_time: time,
+    ) -> list[PlannedShift]:
+        """Return planned shifts for today that should have started by threshold_time
+        but have no corresponding actual shift (open or closed)."""
+        # Load all today's planned shifts with their point (for work_start fallback)
+        result = await self.session.execute(
+            select(PlannedShift)
+            .where(
+                PlannedShift.shift_date == today,
+                PlannedShift.status == PlannedShiftStatus.PLANNED,
+            )
+            .options(selectinload(PlannedShift.point))
+        )
+        planned = list(result.scalars().all())
+        if not planned:
+            return []
+
+        # Get all user_ids that already have a shift today (open or closed)
+        opened_result = await self.session.execute(
+            select(Shift.user_id).where(Shift.shift_date == today)
+        )
+        opened_user_ids = set(opened_result.scalars().all())
+
+        uncovered = []
+        for ps in planned:
+            if ps.user_id in opened_user_ids:
+                continue
+
+            # Determine expected start time
+            expected_start: time | None = ps.start_time
+            if expected_start is None and ps.point is not None:
+                expected_start = ps.point.work_start
+
+            if expected_start is None:
+                continue
+
+            if expected_start <= threshold_time:
+                uncovered.append(ps)
+
+        return uncovered

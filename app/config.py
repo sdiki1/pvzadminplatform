@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     timezone: str = Field(default="Asia/Yekaterinburg", alias="TIMEZONE")
 
     admin_ids_raw: str = Field(default="", alias="ADMIN_IDS")
-    confirm_request_time: str = Field(default="19:00", alias="CONFIRM_REQUEST_TIME")
+    confirm_request_time: str = Field(default="09:00", alias="CONFIRM_REQUEST_TIME")
+    confirm_deadline_time: str = Field(default="18:00", alias="CONFIRM_DEADLINE_TIME")
 
     google_service_account_file: Optional[str] = Field(default=None, alias="GOOGLE_SERVICE_ACCOUNT_FILE")
     google_main_sheet_id: Optional[str] = Field(default=None, alias="GOOGLE_MAIN_SHEET_ID")

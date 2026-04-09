@@ -49,7 +49,7 @@
                     </div>
 
                     <div class="table-responsive">
-                        <table class="table table-sm align-middle" id="payrollPreviewTable">
+                        <table class="table table-sm align-middle" id="payrollPreviewTable" style="min-width:900px">
                             <thead>
                                 <tr>
                                     <th>Сотрудник</th>
@@ -97,7 +97,7 @@
                                     <td class="text-end">{{ "%.2f"|format(row.reserve_bonus_rub|float) }}</td>
                                     <td class="text-end">{{ "%.2f"|format(row.substitution_bonus_rub|float) }}</td>
                                     <td class="text-end">{{ "%.2f"|format(row.manager_bonus_rub|float) }}</td>
-                                    <td class="text-end">{{ "%.2f"|format(row.adjustments_rub|float) }}</td>
+                                    <td class="text-end {% if row.adjustments_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(row.adjustments_rub|float) }}</td>
                                     <td class="text-end fw-semibold subtotal-cell">{{ "%.2f"|format(row.subtotal_amount_rub|float) }}</td>
                                     <td class="text-end" style="min-width:130px;">
                                         <input type="number" class="form-control form-control-sm text-end debt-input" name="debt_adjustment_rub_{{ row.user_id }}" step="0.01" value="0.00">

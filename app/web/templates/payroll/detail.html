@@ -2,28 +2,28 @@
 {% block title %}Ведомость #{{ run.id }} — PVZ Admin{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
     <div>
         <h4 class="mb-1">Ведомость #{{ run.id }}</h4>
-        <p class="text-muted mb-0">
+        <p class="text-muted mb-0 small">
             {{ run.period_start.strftime('%d.%m.%Y') }} — {{ run.period_end.strftime('%d.%m.%Y') }}
             &middot; Выплата {{ run.payout_day }}-го числа
             &middot; Сформирована {{ run.generated_at.strftime('%d.%m.%Y %H:%M') if run.generated_at else '—' }}
         </p>
     </div>
     {% if can_manage_payroll %}
-    <div class="d-flex gap-2 align-items-center">
-        <a href="/payroll/{{ run.id }}/export" class="btn btn-success">
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <a href="/payroll/{{ run.id }}/export" class="btn btn-success btn-sm">
             <i class="bi bi-file-earmark-excel"></i> Сводная XLSX
         </a>
-        <a href="/payroll/{{ run.id }}/export-sheets" class="btn btn-outline-success">
-            <i class="bi bi-file-earmark-excel"></i> Расчётные листы XLSX
+        <a href="/payroll/{{ run.id }}/export-sheets" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-file-earmark-excel"></i> Расчётные листы
         </a>
         {% if current_user.roles and 'superadmin' in current_user.roles %}
         <form method="post" action="/payroll/{{ run.id }}/delete"
               onsubmit="return confirm('Удалить ведомость #{{ run.id }}? Все расчёты будут удалены. Это действие необратимо.')">
-            <button type="submit" class="btn btn-outline-danger">
-                <i class="bi bi-trash"></i> Удалить ведомость
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+                <i class="bi bi-trash"></i> Удалить
             </button>
         </form>
         {% endif %}
@@ -47,7 +47,7 @@
 </div>
 
 <div class="table-container">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0" style="min-width:900px">
         <thead>
             <tr>
                 <th>Сотрудник</th>
@@ -80,10 +80,10 @@
                 <td class="text-end">{{ "%.2f"|format(item.issued_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.reserve_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.substitution_bonus_rub|float) }}</td>
-                <td class="text-end text-danger">{{ "%.2f"|format(item.dispute_deduction_rub|float) }}</td>
+                <td class="text-end text-danger">-{{ "%.2f"|format(item.dispute_deduction_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.manager_bonus_rub|float) }}</td>
-                <td class="text-end">{{ "%.2f"|format(item.adjustments_rub|float) }}</td>
-                <td class="text-end">{{ "%.2f"|format(item.debt_adjustment_rub|float) }}</td>
+                <td class="text-end {% if item.adjustments_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(item.adjustments_rub|float) }}</td>
+                <td class="text-end {% if item.debt_adjustment_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(item.debt_adjustment_rub|float) }}</td>
                 <td class="text-end fw-bold">{{ "%.2f"|format(item.total_amount_rub|float) }} ₽</td>
                 <td>
                     <a href="/payroll/{{ run.id }}/sheet/{{ item.id }}" class="btn btn-sm btn-outline-primary" title="Расчётный лист">

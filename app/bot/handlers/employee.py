@@ -17,7 +17,7 @@ from app.bot.keyboards import (
 from app.bot.states import OpenShiftState
 from app.config import get_settings
 from app.db.models import ApprovalStatus, GeoStatus, PlannedShift, Point, RoleEnum
-from app.db.repositories import PointRepo, ShiftRepo, UserRepo
+from app.db.repositories import PlannedShiftRepo, PointRepo, ShiftRepo, UserRepo
 from app.db.session import SessionLocal
 from app.services.email import EmailService
 from sqlalchemy import select
@@ -216,6 +216,8 @@ async def cb_open_point_selected(callback: CallbackQuery, state: FSMContext) -> 
             open_geo_status=GeoStatus.OK,
             open_approval_status=ApprovalStatus.APPROVED,
         )
+        planned_repo = PlannedShiftRepo(session)
+        await planned_repo.mark_opened(actor.id, now.date(), point.id)
         point_name = point.name
         employee_name = actor.full_name
 
@@ -300,6 +302,8 @@ async def fsm_open_code(message: Message, state: FSMContext) -> None:
             open_geo_status=GeoStatus.OK,
             open_approval_status=ApprovalStatus.APPROVED,
         )
+        planned_repo = PlannedShiftRepo(session)
+        await planned_repo.mark_opened(actor.id, now.date(), point_id)
         employee_name = actor.full_name
 
     await state.clear()

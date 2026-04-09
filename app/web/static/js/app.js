@@ -4,6 +4,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const sidebar = document.getElementById('sidebar');
     const overlay = document.getElementById('sidebarOverlay');
 
+    function closeSidebar() {
+        sidebar.classList.remove('show');
+        overlay.classList.remove('show');
+    }
+
     if (toggle) {
         toggle.addEventListener('click', function() {
             sidebar.classList.toggle('show');
@@ -12,9 +17,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (overlay) {
-        overlay.addEventListener('click', function() {
-            sidebar.classList.remove('show');
-            overlay.classList.remove('show');
+        overlay.addEventListener('click', closeSidebar);
+    }
+
+    // Close sidebar on nav link click (mobile)
+    if (sidebar) {
+        sidebar.querySelectorAll('.nav-link').forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.innerWidth < 768) closeSidebar();
+            });
         });
     }
 

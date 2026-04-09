@@ -71,6 +71,7 @@ def _ensure_planned_shift_columns(sync_conn) -> None:
     except Exception:
         return
 
+    dialect = sync_conn.dialect.name
     statements: list[str] = []
     if "is_reserve" not in existing_cols:
         statements.append("ALTER TABLE planned_shifts ADD COLUMN is_reserve BOOLEAN NOT NULL DEFAULT FALSE")
@@ -80,6 +81,15 @@ def _ensure_planned_shift_columns(sync_conn) -> None:
         statements.append("ALTER TABLE planned_shifts ADD COLUMN start_time TIME")
     if "end_time" not in existing_cols:
         statements.append("ALTER TABLE planned_shifts ADD COLUMN end_time TIME")
+    if "status" not in existing_cols:
+        if dialect == "sqlite":
+            statements.append(
+                "ALTER TABLE planned_shifts ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'planned'"
+            )
+        else:
+            statements.append(
+                "ALTER TABLE planned_shifts ADD COLUMN status VARCHAR(16) NOT NULL DEFAULT 'planned'"
+            )
 
     for stmt in statements:
         sync_conn.execute(text(stmt))
