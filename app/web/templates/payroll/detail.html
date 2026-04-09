@@ -79,7 +79,6 @@
                 <td class="text-end">{{ "%.2f"|format(item.issued_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.reserve_bonus_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.substitution_bonus_rub|float) }}</td>
-                <td class="text-end text-danger">-{{ "%.2f"|format(item.dispute_deduction_rub|float) }}</td>
                 <td class="text-end">{{ "%.2f"|format(item.manager_bonus_rub|float) }}</td>
                 <td class="text-end {% if item.adjustments_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(item.adjustments_rub|float) }}</td>
                 <td class="text-end {% if item.debt_adjustment_rub|float < 0 %}text-danger{% endif %}">{{ "%.2f"|format(item.debt_adjustment_rub|float) }}</td>
