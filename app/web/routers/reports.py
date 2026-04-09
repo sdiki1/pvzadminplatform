@@ -12,7 +12,6 @@ from app.db.models import (
     Appeal,
     DefectIncident,
     Point,
-    PointDeliveryStat,
     Shift,
     SOSIncident,
     WebUser,
@@ -49,32 +48,27 @@ async def reports_index(
     defects_q = select(func.count(DefectIncident.id))
     sos_q = select(func.count(SOSIncident.id))
     appeals_q = select(func.count(Appeal.id))
-    deliveries_q = select(func.sum(PointDeliveryStat.total_count))
 
     if parsed_date_from:
         shifts_q = shifts_q.where(Shift.shift_date >= parsed_date_from)
         defects_q = defects_q.where(DefectIncident.incident_date >= parsed_date_from)
         sos_q = sos_q.where(SOSIncident.incident_date >= parsed_date_from)
         appeals_q = appeals_q.where(Appeal.case_date >= parsed_date_from)
-        deliveries_q = deliveries_q.where(PointDeliveryStat.stat_date >= parsed_date_from)
     if parsed_date_to:
         shifts_q = shifts_q.where(Shift.shift_date <= parsed_date_to)
         defects_q = defects_q.where(DefectIncident.incident_date <= parsed_date_to)
         sos_q = sos_q.where(SOSIncident.incident_date <= parsed_date_to)
         appeals_q = appeals_q.where(Appeal.case_date <= parsed_date_to)
-        deliveries_q = deliveries_q.where(PointDeliveryStat.stat_date <= parsed_date_to)
     if point_id:
         shifts_q = shifts_q.where(Shift.point_id == point_id)
         defects_q = defects_q.where(DefectIncident.point_id == point_id)
         sos_q = sos_q.where(SOSIncident.point_id == point_id)
         appeals_q = appeals_q.where(Appeal.point_id == point_id)
-        deliveries_q = deliveries_q.where(PointDeliveryStat.point_id == point_id)
 
     shifts_count = (await db.execute(shifts_q)).scalar() or 0
     defects_count = (await db.execute(defects_q)).scalar() or 0
     sos_count = (await db.execute(sos_q)).scalar() or 0
     appeals_count = (await db.execute(appeals_q)).scalar() or 0
-    deliveries_total = (await db.execute(deliveries_q)).scalar() or 0
 
     # Appeals breakdown
     appealed = (await db.execute(
@@ -102,7 +96,6 @@ async def reports_index(
         "defects_count": defects_count,
         "sos_count": sos_count,
         "appeals_count": appeals_count,
-        "deliveries_total": deliveries_total,
         "appealed": appealed,
         "not_appealed": not_appealed,
         "defect_by_type": defect_by_type})

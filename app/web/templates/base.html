@@ -76,9 +76,6 @@
             <a href="/supplies" class="nav-link {% if active_page == 'supplies' %}active{% endif %}">
                 <i class="bi bi-cart3"></i> Расходники
             </a>
-            <a href="/deliveries" class="nav-link {% if active_page == 'deliveries' %}active{% endif %}">
-                <i class="bi bi-truck"></i> Поставки
-            </a>
 
             <div class="nav-section">Зарплата</div>
             {% if current_user and ('superadmin' in current_user.roles or 'admin' in current_user.roles) %}

@@ -44,7 +44,6 @@ def create_app() -> FastAPI:
     from app.web.routers.defects import router as defects_router
     from app.web.routers.sos import router as sos_router
     from app.web.routers.supplies import router as supplies_router
-    from app.web.routers.deliveries import router as deliveries_router
     from app.web.routers.appeals import router as appeals_router
     from app.web.routers.marketing import router as marketing_router
     from app.web.routers.reports import router as reports_router
@@ -68,7 +67,6 @@ def create_app() -> FastAPI:
     app.include_router(defects_router)
     app.include_router(sos_router)
     app.include_router(supplies_router)
-    app.include_router(deliveries_router)
     app.include_router(appeals_router)
     app.include_router(marketing_router)
     app.include_router(reports_router)

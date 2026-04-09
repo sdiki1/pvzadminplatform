@@ -62,11 +62,6 @@ from app.db.models.supply import (
     SupplyStatusLog,
 )
 
-# Delivery models
-from app.db.models.delivery import (
-    PointDeliveryStat,
-)
-
 # Appeal models
 from app.db.models.appeals import (
     Appeal,
@@ -139,8 +134,6 @@ __all__ = [
     "SupplyRequestHeader",
     "SupplyRequestItem",
     "SupplyStatusLog",
-    # Delivery
-    "PointDeliveryStat",
     # Appeals
     "Appeal",
     "AppealFeedback",
