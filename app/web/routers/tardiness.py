@@ -24,6 +24,12 @@ from app.db.models import (
 from app.utils.parsing import parse_date
 from app.web.deps import get_current_user, get_db, require_manager
 
+_ELEVATED_ROLES = {"superadmin", "admin"}
+
+
+def _is_elevated(user: WebUser) -> bool:
+    return bool(set(user.roles).intersection(_ELEVATED_ROLES))
+
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -35,17 +41,19 @@ TZ = ZoneInfo("Asia/Yekaterinburg")
 FINE_TIERS = [
     (10, 30, Decimal("500")),   # 10–30 min → 500 ₽
     (30, 60, Decimal("1000")),  # 30–60 min → 1 000 ₽
-    (60, None, Decimal("1000")), # >60 min → 1 000 ₽ (same ceiling)
+    # >60 min → 6 000 ₽/час (пропорционально)
 ]
+
+_HOURLY_FINE_RATE = Decimal("6000")  # ₽ за час при опоздании > 60 мин
 
 
 def _calc_fine(delay_minutes: int) -> Decimal:
     for low, high, amount in FINE_TIERS:
-        if high is None:
-            if delay_minutes >= low:
-                return amount
-        elif low <= delay_minutes < high:
+        if low <= delay_minutes < high:
             return amount
+    if delay_minutes >= 60:
+        hours = Decimal(delay_minutes) / Decimal("60")
+        return (_HOURLY_FINE_RATE * hours).quantize(Decimal("0.01"))
     return Decimal("0")
 
 
@@ -70,6 +78,9 @@ async def list_tardiness(
 ):
     per_page = 30
     query = select(TardinessRecord)
+
+    if not _is_elevated(current_user) and current_user.user_id:
+        query = query.where(TardinessRecord.user_id == current_user.user_id)
 
     if point_id:
         query = query.where(TardinessRecord.point_id == point_id)
@@ -135,7 +146,8 @@ async def scan_form(
     d_from = parse_date(date_from) if date_from else today - timedelta(days=7)
     d_to = parse_date(date_to) if date_to else today
 
-    preview = await _detect_tardiness(db, d_from, d_to, dry_run=True)
+    only_user_id = current_user.user_id if not _is_elevated(current_user) else None
+    preview = await _detect_tardiness(db, d_from, d_to, dry_run=True, only_user_id=only_user_id)
 
     return templates.TemplateResponse(request, "tardiness/scan.html", {
         "current_user": current_user,
@@ -249,6 +261,7 @@ async def _detect_tardiness(
     d_to: date,
     dry_run: bool = True,
     created_by: int | None = None,
+    only_user_id: int | None = None,
 ) -> list[dict]:
     """
     Scan closed/open shifts in [d_from, d_to].
@@ -269,12 +282,13 @@ async def _detect_tardiness(
     )
     existing_shift_ids = {row[0] for row in existing_result.all()}
 
-    shifts_result = await db.execute(
-        select(Shift).where(
-            Shift.shift_date >= d_from,
-            Shift.shift_date <= d_to,
-        ).order_by(Shift.shift_date, Shift.opened_at)
+    shifts_q = select(Shift).where(
+        Shift.shift_date >= d_from,
+        Shift.shift_date <= d_to,
     )
+    if only_user_id:
+        shifts_q = shifts_q.where(Shift.user_id == only_user_id)
+    shifts_result = await db.execute(shifts_q.order_by(Shift.shift_date, Shift.opened_at))
     shifts = shifts_result.scalars().all()
 
     detected: list[dict] = []

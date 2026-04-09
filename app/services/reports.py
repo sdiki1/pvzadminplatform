@@ -51,6 +51,8 @@ class ReportService:
             ]
         )
 
+        header_row = 3  # rows 1=period, 2=empty, 3=header
+        data_start = header_row + 1
         for row in rows:
             ws.append(
                 [
@@ -73,6 +75,18 @@ class ReportService:
                     self._num(row.total_amount_rub),
                 ]
             )
+
+        if rows:
+            data_end = data_start + len(rows) - 1
+            total_row = ["ИТОГО", "", "", "", "", "", "", "", "", "", "", "", "", "",
+                         f"=SUM(O{data_start}:O{data_end})",
+                         f"=SUM(P{data_start}:P{data_end})",
+                         f"=SUM(Q{data_start}:Q{data_end})"]
+            ws.append(total_row)
+            # Bold the totals row
+            from openpyxl.styles import Font
+            for cell in ws[ws.max_row]:
+                cell.font = Font(bold=True)
 
         path = self.export_dir / f"payroll_summary_{period_start}_{period_end}.xlsx"
         wb.save(path)
