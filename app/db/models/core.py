@@ -318,7 +318,9 @@ class PlannedShift(Base):
     is_substitution: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[PlannedShiftStatus] = mapped_column(
-        SqlEnum(PlannedShiftStatus), default=PlannedShiftStatus.PLANNED, nullable=False
+        SqlEnum(PlannedShiftStatus, values_callable=lambda obj: [e.value for e in obj]),
+        default=PlannedShiftStatus.PLANNED,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
