@@ -25,6 +25,9 @@ MAIN_MENU = InlineKeyboardMarkup(
             _btn("🟢 Начать смену", "shift:open"),
             _btn("🔴 Закрыть смену", "shift:close"),
         ],
+        [
+            _btn("📅 Подтвердить смену на завтра", "shift:confirm_tomorrow"),
+        ],
     ]
 )
 
@@ -98,6 +101,5 @@ def tomorrow_confirm_keyboard(target_date: str) -> InlineKeyboardMarkup:
         inline_keyboard=[[
             _btn("✅ Да", f"confirm:{target_date}:yes"),
             _btn("❌ Нет", f"confirm:{target_date}:no"),
-            _btn("🤷 Не знаю", f"confirm:{target_date}:unknown"),
         ]]
     )

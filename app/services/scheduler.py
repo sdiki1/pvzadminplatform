@@ -79,8 +79,9 @@ class BotScheduler:
                 try:
                     await self.bot.send_message(
                         user.telegram_id,
-                        f"Подтвердите выход на {target_date:%d.%m.%Y}",
+                        f"📅 <b>Вы выйдете на смену завтра, {target_date:%d.%m.%Y}?</b>",
                         reply_markup=tomorrow_confirm_keyboard(target_date.isoformat()),
+                        parse_mode="HTML",
                     )
                 except Exception:
                     continue

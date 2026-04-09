@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import F, Router
@@ -13,11 +13,12 @@ from app.bot.context import ensure_actor
 from app.bot.keyboards import (
     MAIN_MENU,
     shift_open_points_keyboard,
+    tomorrow_confirm_keyboard,
 )
 from app.bot.states import OpenShiftState
 from app.config import get_settings
-from app.db.models import ApprovalStatus, GeoStatus, PlannedShift, Point, RoleEnum
-from app.db.repositories import PlannedShiftRepo, PointRepo, ShiftRepo, UserRepo
+from app.db.models import ApprovalStatus, ConfirmationStatus, GeoStatus, PlannedShift, Point, RoleEnum
+from app.db.repositories import ConfirmationRepo, PlannedShiftRepo, PointRepo, ShiftRepo, UserRepo
 from app.db.session import SessionLocal
 from app.services.email import EmailService
 from sqlalchemy import select
@@ -379,6 +380,113 @@ async def cb_shift_close(callback: CallbackQuery, state: FSMContext) -> None:
         duration_minutes=duration,
         geo_ok=True,
     )
+
+
+# ---------------------------------------------------------------------------
+# Confirm tomorrow shift — button in main menu
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data == "shift:confirm_tomorrow")
+async def cb_confirm_tomorrow(callback: CallbackQuery) -> None:
+    async with SessionLocal() as session:
+        actor = await ensure_actor(callback, session)
+        if not actor:
+            return
+
+        tomorrow = (datetime.now(TZ) + timedelta(days=1)).date()
+
+        planned = (await session.execute(
+            select(PlannedShift).where(
+                PlannedShift.user_id == actor.id,
+                PlannedShift.shift_date == tomorrow,
+            )
+        )).scalars().all()
+
+        # Check existing confirmation
+        conf_repo = ConfirmationRepo(session)
+        existing = await conf_repo.get_user_confirmation(actor.id, tomorrow)
+
+        if not planned:
+            await callback.answer(
+                f"На {tomorrow:%d.%m.%Y} плановых смен нет.",
+                show_alert=True,
+            )
+            return
+
+        point_repo = PointRepo(session)
+        points_map = {p.id: p for p in await point_repo.list_all()}
+
+    lines = []
+    for ps in planned:
+        point = points_map.get(ps.point_id)
+        name = point.name if point else f"Точка #{ps.point_id}"
+        time_str = f"  {ps.start_time:%H:%M}–{ps.end_time:%H:%M}" if ps.start_time and ps.end_time else ""
+        lines.append(f"📍 {name}{time_str}")
+
+    status_line = ""
+    if existing:
+        icons = {ConfirmationStatus.YES: "✅ Да", ConfirmationStatus.NO: "❌ Нет", ConfirmationStatus.UNKNOWN: "🤷 Не знаю"}
+        status_line = f"\n\n<i>Ваш ответ: {icons.get(existing.status, existing.status.value)}</i>"
+
+    text = (
+        f"📅 <b>Смены на {tomorrow:%d.%m.%Y}:</b>\n\n"
+        + "\n".join(lines)
+        + status_line
+        + "\n\nВы выйдете на смену?"
+    )
+    await callback.message.edit_text(
+        text,
+        reply_markup=tomorrow_confirm_keyboard(tomorrow.isoformat()),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("confirm:"))
+async def cb_confirm_answer(callback: CallbackQuery) -> None:
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Некорректные данные", show_alert=True)
+        return
+
+    _, date_str, answer = parts
+    try:
+        for_date = date.fromisoformat(date_str)
+    except ValueError:
+        await callback.answer("Некорректная дата", show_alert=True)
+        return
+
+    status_map = {
+        "yes": ConfirmationStatus.YES,
+        "no": ConfirmationStatus.NO,
+        "unknown": ConfirmationStatus.UNKNOWN,
+    }
+    status = status_map.get(answer)
+    if not status:
+        await callback.answer("Неизвестный ответ", show_alert=True)
+        return
+
+    async with SessionLocal() as session:
+        actor = await ensure_actor(callback, session)
+        if not actor:
+            return
+        conf_repo = ConfirmationRepo(session)
+        await conf_repo.upsert(actor.id, for_date, status)
+
+    labels = {
+        ConfirmationStatus.YES: ("✅", "Отлично! Ваш выход на смену подтверждён."),
+        ConfirmationStatus.NO: ("❌", "Принято. Вы отметили, что не выйдете на смену."),
+        ConfirmationStatus.UNKNOWN: ("🤷", "Принято. Вы ответили «не знаю»."),
+    }
+    icon, text = labels[status]
+    await callback.message.edit_text(
+        f"{icon} <b>{text}</b>\n\n"
+        f"Дата: {for_date:%d.%m.%Y}\n\n"
+        f"📋 Меню",
+        reply_markup=MAIN_MENU,
+        parse_mode="HTML",
+    )
+    await callback.answer(icon)
 
 
 # ---------------------------------------------------------------------------
