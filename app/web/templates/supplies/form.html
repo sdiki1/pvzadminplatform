@@ -132,7 +132,7 @@
                                name="qty_{{ si.id }}"
                                id="qty_{{ si.id }}"
                                class="form-control form-control-sm"
-                               value="1">
+                               value="">
                         <button type="button" class="qty-btn" onclick="stepQty({{ si.id }}, 1)">+</button>
                         <span class="small text-muted">{{ si.unit }}</span>
                     </div>
@@ -165,7 +165,7 @@
                                name="qty_{{ si.id }}"
                                id="qty_{{ si.id }}"
                                class="form-control form-control-sm"
-                               value="1">
+                               value="">
                         <button type="button" class="qty-btn" onclick="stepQty({{ si.id }}, 1)">+</button>
                         <span class="small text-muted">{{ si.unit }}</span>
                     </div>
@@ -222,6 +222,8 @@ function toggleItem(id) {
         card.classList.remove('all-good');
         card.classList.add('ordered');
         card.querySelector('.supply-item-toggle').innerHTML = '<i class="bi bi-cart3"></i>';
+        var qtyInp = document.getElementById('qty_' + id);
+        if (qtyInp && !qtyInp.value) qtyInp.value = '1';
         // disable all-good
         document.getElementById('allGoodBtn').classList.remove('active');
         document.getElementById('allGoodInput').value = '';
