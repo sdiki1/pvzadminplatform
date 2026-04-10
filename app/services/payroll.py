@@ -458,7 +458,9 @@ class PayrollService:
     @staticmethod
     def _shift_hours(shift: Shift) -> Decimal:
         mins = shift.duration_minutes or 0
-        return Decimal(mins) / Decimal("60")
+        raw = Decimal(mins) / Decimal("60")
+        # Round to nearest 0.5
+        return (raw * 2).to_integral_value(rounding="ROUND_HALF_UP") / 2
 
     def _calc_shift_base(self, shift: Shift, user: User, point) -> Decimal:
         hours = self._shift_hours(shift)
